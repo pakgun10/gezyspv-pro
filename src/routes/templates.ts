@@ -1,6 +1,7 @@
 import { Elysia } from "elysia";
 import { getPool } from "../db";
 import { authPlugin, requireAdmin, requireAuth } from "./auth";
+import { isSupervisor } from "../rbac";
 import {
   addElement,
   addIndicator,
@@ -681,11 +682,11 @@ ${card(
 
 // ---------- Instance predikat (admin ATAU supervisor) ----------
 
-/** Guard: wajib login (+ paksa ganti sandi) lalu peran admin/supervisor. Guru 403. */
+/** Guard: wajib login (+ paksa ganti sandi) lalu peran admin/supervisor. Guru biasa 403. */
 function requireAdminOrSupervisor({ user, path }: any) {
   const login = requireAuth({ user, path });
   if (login) return login;
-  if (user?.role !== "admin" && user?.role !== "supervisor") {
+  if (user?.role !== "admin" && !isSupervisor(user)) {
     return new Response("Akses ditolak: halaman ini hanya untuk admin dan supervisor.", {
       status: 403,
       headers: { "Content-Type": "text/plain; charset=utf-8" },

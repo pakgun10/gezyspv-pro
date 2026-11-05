@@ -2,7 +2,14 @@ import { createHash, randomBytes } from "node:crypto";
 import type mysql from "mysql2/promise";
 import type { RowDataPacket } from "mysql2/promise";
 
-export type Role = "admin" | "supervisor" | "guru";
+/**
+ * Model peran "satu akun dua peran" (keputusan Pak Gun 2026-11-05).
+ * Akun hanya dua macam: admin dan guru. Supervisor BUKAN peran
+ * tersendiri, melainkan flag is_supervisor di akun guru — sama seperti
+ * is_principal untuk Kepala Sekolah. Satu akun guru bisa dua peran:
+ * membuat sesi (sebagai supervisor) dan disupervisi di sesi lain.
+ */
+export type Role = "admin" | "guru";
 
 export type SessionUser = {
   id: number;
@@ -10,6 +17,7 @@ export type SessionUser = {
   name: string;
   nip: string | null;
   role: Role;
+  is_supervisor: boolean;
   is_principal: boolean;
   must_change_password: boolean;
   active: boolean;
@@ -78,13 +86,14 @@ export async function getSessionUser(
       name: string;
       nip: string | null;
       role: Role;
+      is_supervisor: number;
       is_principal: number;
       must_change_password: number;
       active: number;
       expires_at: Date;
     })[]
   >(
-    `SELECT u.id, u.username, u.name, u.nip, u.role, u.is_principal,
+    `SELECT u.id, u.username, u.name, u.nip, u.role, u.is_supervisor, u.is_principal,
             u.must_change_password, u.active, s.expires_at
      FROM user_sessions s JOIN users u ON u.id = s.user_id
      WHERE s.token_hash = ? AND s.expires_at > NOW()`,
@@ -104,6 +113,7 @@ export async function getSessionUser(
     name: row.name,
     nip: row.nip,
     role: row.role,
+    is_supervisor: row.is_supervisor === 1,
     is_principal: row.is_principal === 1,
     must_change_password: row.must_change_password === 1,
     active: row.active === 1,
@@ -123,6 +133,7 @@ export async function authenticate(
       name: string;
       nip: string | null;
       role: Role;
+      is_supervisor: number;
       is_principal: number;
       must_change_password: number;
       active: number;
@@ -138,6 +149,7 @@ export async function authenticate(
     name: row.name,
     nip: row.nip,
     role: row.role,
+    is_supervisor: row.is_supervisor === 1,
     is_principal: row.is_principal === 1,
     must_change_password: row.must_change_password === 1,
     active: row.active === 1,

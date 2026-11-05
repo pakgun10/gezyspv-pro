@@ -1,7 +1,7 @@
 import type mysql from "mysql2/promise";
 import type { RowDataPacket } from "mysql2/promise";
 import type { SessionUser } from "../auth";
-import { canSupervise, supervisedTeacherIds } from "../rbac";
+import { canSupervise, isSupervisor, supervisedTeacherIds } from "../rbac";
 import { predicateFor, type PredicateRange } from "./scores";
 import { esc } from "../views";
 
@@ -63,15 +63,16 @@ export type ElementAverage = {
 
 export type PredicateCount = { label: string; count: number };
 
-/** Apakah user boleh melihat profil/rekap guru teacherId? */
+/** Apakah user boleh melihat profil/rekap guru teacherId? Admin semua; Kepsek semua; supervisor-flag hanya guru yang ditugaskan padanya (termasuk supervisor lain yang ditugaskan); guru hanya dirinya sendiri. */
 export async function canViewTeacher(
   pool: mysql.Pool,
   user: SessionUser,
   teacherId: number,
 ): Promise<boolean> {
   if (user.role === "admin") return true;
-  if (user.role === "guru") return user.id === teacherId;
-  if (user.role === "supervisor") return canSupervise(pool, user, teacherId);
+  if (user.id === teacherId) return true; // profil sendiri — guru biasa maupun supervisor
+  if (user.is_principal) return true;
+  if (isSupervisor(user)) return canSupervise(pool, user, teacherId);
   return false;
 }
 
@@ -110,13 +111,11 @@ export async function viewScopeTeacherIds(
   pool: mysql.Pool,
   user: SessionUser,
 ): Promise<number[] | null> {
-  if (user.role === "admin") return null;
-  if (user.role === "guru") return [user.id];
-  if (user.role === "supervisor") {
-    if (user.is_principal) return null;
+  if (user.role === "admin" || user.is_principal) return null;
+  if (isSupervisor(user)) {
     return supervisedTeacherIds(pool, user);
   }
-  return [];
+  return [user.id];
 }
 
 function scopeClause(ids: number[] | null): { sql: string; params: unknown[] } {
@@ -403,15 +402,14 @@ export async function canViewClassRecap(
   user: SessionUser,
   classId: number,
 ): Promise<boolean> {
-  if (user.role === "admin") return true;
+  if (user.role === "admin" || user.is_principal) return true;
   const [rows] = await pool.query<(RowDataPacket & { teacher_id: number })[]>(
     "SELECT DISTINCT teacher_id FROM sessions WHERE class_id = ?",
     [classId],
   );
-  if (rows.length === 0) return false; // admin sudah lolos di atas; tanpa sesi, tidak ada yang bisa dilihat
-  if (user.role === "guru") return rows.some((r) => r.teacher_id === user.id);
-  if (user.role === "supervisor") {
-    if (user.is_principal) return true;
+  if (rows.length === 0) return false; // admin/Kepsek sudah lolos di atas; tanpa sesi, tidak ada yang bisa dilihat
+  if (rows.some((r) => r.teacher_id === user.id)) return true;
+  if (isSupervisor(user)) {
     const ids = await supervisedTeacherIds(pool, user);
     return rows.some((r) => ids.includes(r.teacher_id));
   }

@@ -1,6 +1,6 @@
 import type mysql from "mysql2/promise";
 import type { RowDataPacket } from "mysql2/promise";
-import { canSupervise } from "../rbac";
+import { canSupervise, isSupervisor } from "../rbac";
 import type { SessionUser } from "../auth";
 import { snapshotTemplateForSession } from "./snapshot";
 
@@ -116,16 +116,23 @@ export async function audit(
   );
 }
 
-/** Apakah user boleh MELIHAT sesi ini? Admin semua; supervisor semua (baca); guru hanya sesi atas dirinya. */
+/**
+ * Apakah user boleh MELIHAT sesi ini? Hanya: admin, Kepala Sekolah,
+ * supervisor pembuat sesi, dan guru yang disupervisi pada sesi itu.
+ * Supervisor lain TIDAK boleh membuka sesi ini (keputusan Pak Gun
+ * 2026-11-05 — dipersempit dari aturan lama yang membolehkan semua
+ * supervisor melihat semua sesi).
+ */
 export function canViewSession(user: SessionUser, s: SessionRow): boolean {
   if (user.role === "admin") return true;
-  if (user.role === "supervisor") return true;
-  return user.role === "guru" && s.teacher_id === user.id;
+  if (user.is_principal) return true;
+  if (s.supervisor_id === user.id) return true;
+  return s.teacher_id === user.id;
 }
 
 /** Apakah user boleh MENGUBAH isi sesi ini? Hanya supervisor pembuatnya, selama belum selesai. */
 export function canEditSession(user: SessionUser, s: SessionRow): boolean {
-  return user.role === "supervisor" && s.supervisor_id === user.id && s.status !== "selesai";
+  return isSupervisor(user) && s.supervisor_id === user.id && s.status !== "selesai";
 }
 
 export async function loadSession(pool: mysql.Pool, id: number): Promise<SessionRow | null> {
@@ -156,10 +163,15 @@ export async function loadSessionDetail(pool: mysql.Pool, id: number): Promise<S
   return (rows[0] as SessionDetail | undefined) ?? null;
 }
 
-/** Daftar sesi yang boleh dilihat user (admin: semua; supervisor: semua; guru: miliknya). */
+/**
+ * Daftar sesi yang boleh dilihat user. Admin/Kepsek: semua.
+ * Pengguna lain: sesi yang ia buat (sebagai supervisor) ATAU sesi atas
+ * dirinya (sebagai guru yang disupervisi) — satu akun dua peran.
+ */
 export async function listSessionsForUser(pool: mysql.Pool, user: SessionUser): Promise<SessionDetail[]> {
-  const where = user.role === "guru" ? "WHERE s.teacher_id = ?" : "";
-  const params = user.role === "guru" ? [user.id] : [];
+  const all = user.role === "admin" || user.is_principal;
+  const where = all ? "" : "WHERE s.supervisor_id = ? OR s.teacher_id = ?";
+  const params = all ? [] : [user.id, user.id];
   const [rows] = await pool.query<(RowDataPacket & SessionDetail)[]>(
     `SELECT s.*,
             t.title AS template_title,
@@ -298,16 +310,21 @@ export type CreateSessionInput = {
 
 /**
  * Buat sesi baru (status 'pra') + salin snapshot templat.
- * Menolak: bukan supervisor, guru tidak ditugaskan, templat bukan
- * 'aktif', kelas/guru tidak ditemukan, tanggal kosong.
+ * Menolak: bukan supervisor, mensupervisi diri sendiri, guru tidak
+ * ditugaskan, templat bukan 'aktif', kelas/guru tidak ditemukan,
+ * tanggal kosong. Guru yang disupervisi boleh pengguna aktif mana pun
+ * yang bukan admin (guru biasa, supervisor lain, maupun Kepsek).
  */
 export async function createSession(
   pool: mysql.Pool,
   supervisor: SessionUser,
   input: CreateSessionInput,
 ): Promise<number> {
-  if (supervisor.role !== "supervisor") {
+  if (!isSupervisor(supervisor)) {
     throw new Error("Hanya supervisor yang bisa membuat sesi supervisi.");
+  }
+  if (input.teacherId === supervisor.id) {
+    throw new Error("Anda tidak bisa mensupervisi diri sendiri.");
   }
   if (!input.observed_at) throw new Error("Tanggal observasi wajib diisi.");
   const [tplRows] = await pool.query<
@@ -323,7 +340,7 @@ export async function createSession(
     [input.teacherId],
   );
   const teacher = teacherRows[0];
-  if (!teacher || teacher.role !== "guru") throw new Error("Guru tidak ditemukan.");
+  if (!teacher || teacher.role === "admin") throw new Error("Guru tidak ditemukan.");
   if (!(await canSupervise(pool, supervisor, input.teacherId))) {
     throw new Error("Guru ini tidak ditugaskan kepada Anda.");
   }
@@ -495,6 +512,9 @@ export type ScoreEntry = { indicatorId: number; value: number | null; evidence: 
  * Simpan skor + bukti teks observasi (sebagian boleh; value null = kosongkan).
  * Nilai harus ada di session_scale_levels sesi itu. Hanya supervisor
  * pembuat, selama sesi belum selesai.
+ * Setiap perubahan skor dicatat di audit log (Fase 4, plan bagian 12):
+ * score.create bila indikator belum pernah berskor, score.update bila
+ * nilai/bukti berubah — dengan nilai lama → nilai baru.
  */
 export async function saveScores(
   pool: mysql.Pool,
@@ -525,6 +545,20 @@ export async function saveScores(
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+    // Nilai lama sebelum ditulis — untuk audit old → new.
+    const [oldRows] = await conn.query<
+      (RowDataPacket & { session_indicator_id: number; value: number | null; evidence: string | null })[]
+    >(
+      "SELECT session_indicator_id, value, evidence FROM observation_scores WHERE session_id = ?",
+      [sessionId],
+    );
+    const oldByIndicator = new Map<number, { value: number | null; evidence: string }>();
+    for (const r of oldRows) {
+      oldByIndicator.set(r.session_indicator_id, {
+        value: r.value,
+        evidence: r.evidence ?? "",
+      });
+    }
     for (const e of entries) {
       await conn.query(
         `INSERT INTO observation_scores (session_id, session_indicator_id, value, evidence)
@@ -532,6 +566,33 @@ export async function saveScores(
          ON DUPLICATE KEY UPDATE value = VALUES(value), evidence = VALUES(evidence)`,
         [sessionId, e.indicatorId, e.value, e.evidence.slice(0, 2000)],
       );
+      const old = oldByIndicator.get(e.indicatorId);
+      const newEvidence = e.evidence.slice(0, 2000);
+      if (!old) {
+        await conn.query(
+          "INSERT INTO audit_logs (user_id, action, entity, entity_id, detail) VALUES (?, 'score.create', 'observation_scores', ?, ?)",
+          [user.id, sessionId, JSON.stringify({ indicator_id: e.indicatorId, value: e.value })],
+        );
+      } else if (old.value !== e.value || old.evidence !== newEvidence) {
+        await conn.query(
+          "INSERT INTO audit_logs (user_id, action, entity, entity_id, detail) VALUES (?, 'score.update', 'observation_scores', ?, ?)",
+          [
+            user.id,
+            sessionId,
+            JSON.stringify({
+              indicator_id: e.indicatorId,
+              old_value: old.value,
+              new_value: e.value,
+              ...(old.evidence !== newEvidence
+                ? { old_evidence: old.evidence.slice(0, 200), new_evidence: newEvidence.slice(0, 200) }
+                : {}),
+            }),
+          ],
+        );
+      }
+      // Perbarui peta lama agar entri ganda untuk indikator yang sama
+      // dalam satu pemanggilan tetap tercatat dengan benar.
+      oldByIndicator.set(e.indicatorId, { value: e.value, evidence: newEvidence });
     }
     await conn.commit();
   } catch (err) {
@@ -542,7 +603,7 @@ export async function saveScores(
   }
 }
 
-/** Simpan refleksi guru (guru_note). Hanya guru pemilik sesi, saat status 'pasca'. */
+/** Simpan refleksi guru (guru_note). Hanya guru yang disupervisi pada sesi ini, saat status 'pasca' — siapa pun perannya (guru biasa maupun supervisor yang sedang disupervisi). */
 export async function savePascaGuru(
   pool: mysql.Pool,
   user: SessionUser,
@@ -551,7 +612,7 @@ export async function savePascaGuru(
 ): Promise<void> {
   const session = await loadSession(pool, sessionId);
   if (!session) throw new Error("Sesi tidak ditemukan.");
-  if (user.role !== "guru" || session.teacher_id !== user.id) {
+  if (session.teacher_id !== user.id) {
     throw new Error("Hanya guru yang disupervisi pada sesi ini yang bisa mengisi refleksi.");
   }
   if (session.status !== "pasca") {

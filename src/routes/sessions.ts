@@ -1,7 +1,7 @@
 import { Elysia } from "elysia";
 import { getPool } from "../db";
 import { authPlugin, requireAuth } from "./auth";
-import { supervisedTeacherIds } from "../rbac";
+import { isSupervisor, supervisedTeacherIds } from "../rbac";
 import type { RowDataPacket } from "mysql2/promise";
 import {
   alertBox,
@@ -173,7 +173,7 @@ export const sessionRoutes = new Elysia()
           <td class="py-2 pr-2">${esc(s.class_name)}</td>
           <td class="py-2 pr-2">${esc(s.subject_theme ?? "")}</td>
           <td class="py-2 pr-2">${esc(s.observed_at)}${s.observed_time ? ` ${esc(s.observed_time)}` : ""}</td>
-          <td class="py-2 pr-2">${STAGE_LABEL[s.status]}${s.status === "pasca" && user!.role === "guru" ? ` <span class="ml-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-semibold">Menunggu refleksi Anda</span>` : ""}</td>
+          <td class="py-2 pr-2">${STAGE_LABEL[s.status]}${s.status === "pasca" && s.teacher_id === user!.id ? ` <span class="ml-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-semibold">Menunggu refleksi Anda</span>` : ""}</td>
           <td class="py-2">${esc(s.supervisor_name)}</td>
         </tr>`,
       )
@@ -183,7 +183,7 @@ export const sessionRoutes = new Elysia()
       school,
       `<div class="flex items-center justify-between mb-6">
          <h1 class="text-2xl font-bold text-slate-900">Sesi Supervisi</h1>
-         ${user!.role === "supervisor" ? `<a href="/supervisi/baru" class="${btnPrimary}">+ Buat Sesi Baru</a>` : ""}
+         ${isSupervisor(user!) ? `<a href="/supervisi/baru" class="${btnPrimary}">+ Buat Sesi Baru</a>` : ""}
        </div>
        ${msg ? alertBox(query.ok ? "ok" : "err", msg) : ""}
        ${
@@ -200,7 +200,7 @@ export const sessionRoutes = new Elysia()
 
   // ---------- Buat sesi ----------
   .get("/supervisi/baru", async ({ user, query }: any) => {
-    if (user!.role !== "supervisor") {
+    if (!isSupervisor(user!)) {
       return new Response(null, { status: 302, headers: { Location: "/supervisi?err=" + encodeURIComponent("Hanya supervisor yang bisa membuat sesi.") } });
     }
     const pool = getPool();
@@ -208,7 +208,8 @@ export const sessionRoutes = new Elysia()
     const [tpls] = await pool.query<(RowDataPacket & { id: number; title: string; score_scale: number })[]>(
       "SELECT id, title, score_scale FROM templates WHERE status = 'aktif' ORDER BY title",
     );
-    const teacherIds = await supervisedTeacherIds(pool, user!);
+    // Daftar guru yang boleh disupervisi — tanpa diri sendiri (supervisi diri sendiri dilarang).
+    const teacherIds = (await supervisedTeacherIds(pool, user!)).filter((id) => id !== user!.id);
     const [teachers] = await pool.query<(RowDataPacket & { id: number; name: string; username: string })[]>(
       teacherIds.length > 0
         ? `SELECT id, name, username FROM users WHERE id IN (${teacherIds.map(() => "?").join(",")}) ORDER BY name`
@@ -266,7 +267,7 @@ export const sessionRoutes = new Elysia()
     );
   })
   .post("/supervisi/baru", async ({ user, body }: any) => {
-    if (user!.role !== "supervisor") return redirErr("/supervisi", "Hanya supervisor yang bisa membuat sesi.");
+    if (!isSupervisor(user!)) return redirErr("/supervisi", "Hanya supervisor yang bisa membuat sesi.");
     try {
       const id = await createSession(getPool(), user!, {
         templateId: Number(body?.template_id),
@@ -310,7 +311,7 @@ export const sessionRoutes = new Elysia()
        </div>
        <p class="text-slate-600 mb-4">${esc(s.class_name)} · ${esc(s.subject_theme ?? "")} · ${esc(s.phase_semester ?? "")} · ${esc(s.observed_at)}${s.observed_time ? ` ${esc(s.observed_time)}` : ""} · Periode ${esc(s.period_name)}</p>
        ${msg ? alertBox(query.ok ? "ok" : "err", msg) : ""}
-       ${s.status === "pasca" && user!.role === "guru" ? `<div class="mb-4 p-4 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 font-semibold">Menunggu refleksi Anda — silakan isi refleksi pasca-observasi di bawah.</div>` : ""}
+       ${s.status === "pasca" && s.teacher_id === user!.id ? `<div class="mb-4 p-4 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 font-semibold">Menunggu refleksi Anda — silakan isi refleksi pasca-observasi di bawah.</div>` : ""}
        ${stageStepper(s)}
        <div class="grid md:grid-cols-2 gap-4 mb-4">
        ${card(
@@ -364,12 +365,13 @@ export const sessionRoutes = new Elysia()
                .map((e) =>
                  e.kind === "foto"
                    ? `<a href="/bukti/${e.id}" target="_blank" rel="noopener"><img src="/bukti/${e.id}" alt="${esc(e.caption ?? "Foto bukti")}" class="w-28 h-28 object-cover rounded-lg border border-slate-200"></a>`
-                   : `<a href="${esc(e.url ?? "")}" target="_blank" rel="noopener" class="text-sm text-indigo-700 underline">🎬 ${esc(e.caption ?? e.url ?? "")}</a>`,
+                   : `<a href="${esc(e.url ?? "")}" target="_blank" rel="noopener" class="text-sm text-indigo-700 underline break-all">🎬 ${esc(e.caption ?? e.url ?? "")}</a>`,
                )
                .join("")}</div>`,
            )
          : ""}
-       <div class="mt-4">${owner ? statusButtons(s) : s.status === "selesai" ? `<p class="text-sm text-emerald-700 font-semibold">✓ Sesi ini sudah selesai dan terkunci.</p>` : ""}</div>`,
+       <div class="mt-4">${owner ? statusButtons(s) : s.status === "selesai" ? `<p class="text-sm text-emerald-700 font-semibold">✓ Sesi ini sudah selesai dan terkunci.</p>` : ""}</div>
+       <div class="mt-3"><a href="/supervisi/${s.id}/cetak" class="${btnPrimary}">🖨 Cetak Laporan</a></div>`,
       "supervisi",
       `Supervisi ${s.teacher_name}`,
     );
@@ -497,7 +499,7 @@ export const sessionRoutes = new Elysia()
             .map((e) =>
               e.kind === "foto"
                 ? `<div class="relative"><a href="/bukti/${e.id}" target="_blank" rel="noopener"><img src="/bukti/${e.id}" alt="${esc(e.caption ?? "Foto bukti")}" class="w-24 h-24 object-cover rounded-lg border border-slate-200"></a>${e.caption ? `<p class="text-xs text-slate-500 mt-1 w-24">${esc(e.caption)}</p>` : ""}${editable ? `<form method="post" action="/supervisi/${s.id}/bukti/${e.id}/hapus" class="mt-1"><button class="text-xs text-red-600 underline">Hapus</button></form>` : ""}</div>`
-                : `<div><a href="${esc(e.url ?? "")}" target="_blank" rel="noopener" class="text-sm text-indigo-700 underline">🎬 ${esc(e.caption ?? e.url ?? "")}</a>${editable ? `<form method="post" action="/supervisi/${s.id}/bukti/${e.id}/hapus"><button class="text-xs text-red-600 underline">Hapus</button></form>` : ""}</div>`,
+                : `<div><a href="${esc(e.url ?? "")}" target="_blank" rel="noopener" class="text-sm text-indigo-700 underline break-all">🎬 ${esc(e.caption ?? e.url ?? "")}</a>${editable ? `<form method="post" action="/supervisi/${s.id}/bukti/${e.id}/hapus"><button class="text-xs text-red-600 underline">Hapus</button></form>` : ""}</div>`,
             )
             .join("")}</div>` : ""}
           ${editable && photoCount < MAX_PHOTOS_PER_SESSION ? `
@@ -608,7 +610,7 @@ export const sessionRoutes = new Elysia()
     const school = await schoolName();
     const snap = await loadSnapshot(pool, s.id);
     const msg = msgFromQuery(query as Record<string, string>);
-    const isGuru = user!.role === "guru" && s.teacher_id === user!.id;
+    const isGuru = s.teacher_id === user!.id;
     const guruEditable = isGuru && s.status === "pasca";
     const supEditable = canEditSession(user!, s) && s.status === "pasca";
     return html(
@@ -741,20 +743,22 @@ export const sessionRoutes = new Elysia()
   // ---------- Narasi (Fase 3) ----------
   .post("/supervisi/:id/narasi", async ({ user, params, body }: any) => {
     const id = Number(params.id);
+    const back = body?.redirect === "cetak" ? `/supervisi/${id}/cetak` : `/supervisi/${id}/tindak-lanjut`;
     try {
       await saveNarrative(getPool(), user!, id, String(body?.narasi ?? ""));
-      return redirOk(`/supervisi/${id}/tindak-lanjut`, "Narasi disimpan.");
+      return redirOk(back, "Narasi disimpan.");
     } catch (err: any) {
-      return redirErr(`/supervisi/${id}/tindak-lanjut`, err.message ?? "Gagal menyimpan narasi.");
+      return redirErr(back, err.message ?? "Gagal menyimpan narasi.");
     }
   })
-  .post("/supervisi/:id/narasi/buat-ulang", async ({ user, params }: any) => {
+  .post("/supervisi/:id/narasi/buat-ulang", async ({ user, params, body }: any) => {
     const id = Number(params.id);
+    const back = body?.redirect === "cetak" ? `/supervisi/${id}/cetak` : `/supervisi/${id}/tindak-lanjut`;
     try {
       await regenerateNarrative(getPool(), user!, id);
-      return redirOk(`/supervisi/${id}/tindak-lanjut`, "Narasi dibuat ulang dari data sesi saat ini.");
+      return redirOk(back, "Narasi dibuat ulang dari data sesi saat ini.");
     } catch (err: any) {
-      return redirErr(`/supervisi/${id}/tindak-lanjut`, err.message ?? "Gagal membuat ulang narasi.");
+      return redirErr(back, err.message ?? "Gagal membuat ulang narasi.");
     }
   })
 

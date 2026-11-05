@@ -62,8 +62,9 @@ const seedTemplateId = seedTplRows[0]!.id;
 async function makeUser(
   username: string,
   name: string,
-  role: "admin" | "supervisor" | "guru",
+  role: "admin" | "guru" = "guru",
   isPrincipal = 0,
+  isSupervisorFlag = 0,
 ): Promise<SessionUser> {
   const [existing] = await pool.query<(RowDataPacket & { id: number })[]>(
     "SELECT id FROM users WHERE username = ?",
@@ -81,8 +82,8 @@ async function makeUser(
     await pool.query("DELETE FROM users WHERE id = ?", [uid]);
   }
   const [res] = await pool.query<mysql.ResultSetHeader>(
-    "INSERT INTO users (username, name, password_hash, role, is_principal, must_change_password) VALUES (?, ?, ?, ?, ?, 0)",
-    [username, name, await hashPassword("rahasia123"), role, isPrincipal],
+    "INSERT INTO users (username, name, password_hash, role, is_supervisor, is_principal, must_change_password) VALUES (?, ?, ?, ?, ?, ?, 0)",
+    [username, name, await hashPassword("rahasia123"), role, isSupervisorFlag, isPrincipal],
   );
   return {
     id: res.insertId,
@@ -90,6 +91,7 @@ async function makeUser(
     name,
     nip: null,
     role,
+    is_supervisor: isSupervisorFlag === 1,
     is_principal: isPrincipal === 1,
     must_change_password: false,
     active: true,
@@ -97,9 +99,9 @@ async function makeUser(
 }
 
 const admin1 = await makeUser("admin_prof", "Admin Profil", "admin");
-const sup1 = await makeUser("sup_prof", "Supervisor Profil", "supervisor");
-const sup2 = await makeUser("sup_prof2", "Supervisor Tanpa Tugas", "supervisor");
-const kepsek = await makeUser("kepsek_prof", "Kepala Sekolah", "supervisor", 1);
+const sup1 = await makeUser("sup_prof", "Supervisor Profil", "guru", 0, 1);
+const sup2 = await makeUser("sup_prof2", "Supervisor Tanpa Tugas", "guru", 0, 1);
+const kepsek = await makeUser("kepsek_prof", "Kepala Sekolah", "guru", 1, 1);
 const guru1 = await makeUser("guru_prof1", "Guru Satu Profil", "guru");
 const guru2 = await makeUser("guru_prof2", "Guru Dua Profil", "guru");
 const guru3 = await makeUser("guru_prof3", "Guru Tiga Profil", "guru");
@@ -274,9 +276,14 @@ describe("rekap sekolah per periode (service)", () => {
     expect(pred).toEqual({ Cukup: 1, "Sangat Baik": 1, "Sangat Kurang": 1 });
   });
 
-  test("daftar belum disupervisi: guru2 saja (guru4 punya sesi berjalan, jadi tidak masuk)", async () => {
+  test("daftar belum disupervisi: guru2 + para supervisor yang belum disupervisi (satu akun dua peran: supervisor juga guru, jadi ikut terdaftar; guru4 punya sesi berjalan, jadi tidak masuk)", async () => {
     const recap = await periodRecap(pool, periodId, null);
-    expect(recap.unsupervised?.map((g) => g.username)).toEqual(["guru_prof2"]);
+    expect(recap.unsupervised?.map((g) => g.username)).toEqual([
+      "guru_prof2",
+      "kepsek_prof",
+      "sup_prof",
+      "sup_prof2",
+    ]);
   });
 
   test("lingkup supervisor: guru di luar penugasan tidak muncul di daftar belum disupervisi", async () => {

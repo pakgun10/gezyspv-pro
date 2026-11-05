@@ -1,8 +1,9 @@
 import { Elysia } from "elysia";
-import { getPool } from "../db";
+import { configFromEnv, getPool } from "../db";
 import { hashPassword } from "../auth";
 import { authPlugin, requireAdmin } from "./auth";
 import { importGuruCsv, importKelasCsv } from "../lib/csv";
+import { isValidBackupName, restoreBackup } from "../lib/backup";
 import type { RowDataPacket } from "mysql2/promise";
 import {
   alertBox,
@@ -105,12 +106,13 @@ ${card(
         name: string;
         nip: string | null;
         role: string;
+        is_supervisor: number;
         is_principal: number;
         active: number;
       })[]
-    >("SELECT id, username, name, nip, role, is_principal, active FROM users ORDER BY role, name");
+    >("SELECT id, username, name, nip, role, is_supervisor, is_principal, active FROM users ORDER BY role, name");
     const msg = msgFromQuery(query as Record<string, string>);
-    const roleLabel: Record<string, string> = { admin: "Admin", supervisor: "Supervisor", guru: "Guru" };
+    const roleLabel: Record<string, string> = { admin: "Admin", guru: "Guru" };
     return html(
       user!,
       await schoolName(),
@@ -129,12 +131,16 @@ ${card(
         <th class="py-2 pr-2">Peran</th><th class="py-2 pr-2">NIP</th><th class="py-2"></th></tr></thead>
       <tbody>${users
         .map(
-          (u) => `<tr class="border-b border-slate-100">
-          <td class="py-2 pr-2 font-medium">${esc(u.name)}${u.is_principal ? ' <span class="text-xs text-teal-700 font-semibold">· Kepsek</span>' : ""}</td>
+          (u) => `<tr class="border-b border-slate-100 align-top">
+          <td class="py-2 pr-2 font-medium">${esc(u.name)}${u.is_supervisor ? ' <span class="text-xs text-teal-700 font-semibold">· Supervisor</span>' : ""}${u.is_principal ? ' <span class="text-xs text-teal-700 font-semibold">· Kepsek</span>' : ""}</td>
           <td class="py-2 pr-2">${esc(u.username)}</td>
           <td class="py-2 pr-2">${roleLabel[u.role] ?? u.role}</td>
           <td class="py-2 pr-2">${esc(u.nip)}</td>
-          <td class="py-2 text-right">${u.username === "admin" ? "" : `<form method="post" action="/admin/guru/${u.id}/hapus" onsubmit="return confirm('Hapus akun ${esc(u.username)}? Penugasan terkait ikut terhapus.')" class="inline"><button class="${btnDanger}">Hapus</button></form>`}</td>
+          <td class="py-2 text-right whitespace-nowrap">${u.role === "admin" ? "" : `<form method="post" action="/admin/guru/${u.id}/flag" class="inline-flex items-center gap-2 text-xs">
+            <label class="flex items-center gap-1"><input type="checkbox" name="is_supervisor" value="1" ${u.is_supervisor ? "checked" : ""} class="accent-teal-600"> Supervisor</label>
+            <label class="flex items-center gap-1"><input type="checkbox" name="is_principal" value="1" ${u.is_principal ? "checked" : ""} class="accent-teal-600"> Kepsek</label>
+            <button class="${btnGhost}">Simpan Flag</button>
+          </form>`}${u.username === "admin" ? "" : ` <form method="post" action="/admin/guru/${u.id}/hapus" onsubmit="return confirm('Hapus akun ${esc(u.username)}? Penugasan terkait ikut terhapus.')" class="inline"><button class="${btnDanger}">Hapus</button></form>`}</td>
         </tr>`,
         )
         .join("")}</tbody></table></div>`,
@@ -150,10 +156,10 @@ ${card(
     <div><label class="${labelCls}">Peran</label>
       <select class="${inputCls}" name="role">
         <option value="guru">Guru</option>
-        <option value="supervisor">Supervisor</option>
         <option value="admin">Admin</option>
       </select></div>
-    <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="is_principal" value="1" class="accent-teal-600"> Kepala Sekolah (supervisor, bisa mensupervisi semua guru)</label>
+    <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="is_supervisor" value="1" class="accent-teal-600"> Supervisor (guru yang juga mensupervisi — penugasan diatur di menu Penugasan)</label>
+    <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="is_principal" value="1" class="accent-teal-600"> Kepala Sekolah (otomatis supervisor, bisa mensupervisi semua guru)</label>
     <div><label class="${labelCls}">Kata sandi awal</label><input class="${inputCls}" name="password" type="password" required minlength="6"></div>
     <button type="submit" class="${btnPrimary}">Tambah Akun</button>
     <p class="text-xs text-slate-400">Akun baru ditandai wajib ganti kata sandi saat login pertama.</p>
@@ -180,7 +186,10 @@ ${card(
     const username = (b.username ?? "").trim();
     const name = (b.name ?? "").trim();
     const password = b.password ?? "";
-    const role = ["admin", "supervisor", "guru"].includes(b.role ?? "") ? b.role! : "guru";
+    const role = ["admin", "guru"].includes(b.role ?? "") ? b.role! : "guru";
+    // Kepala Sekolah selalu juga supervisor (flag is_supervisor ikut menyala).
+    const isSupervisorFlag = role === "guru" && (b.is_supervisor === "1" || b.is_principal === "1") ? 1 : 0;
+    const isPrincipalFlag = role === "guru" && b.is_principal === "1" ? 1 : 0;
     const fail = (m: string) =>
       new Response(null, { status: 302, headers: { Location: "/admin/guru?err=" + encodeURIComponent(m) } });
     if (!/^[a-zA-Z0-9._-]{3,50}$/.test(username)) return fail("Username tidak valid (3–50 karakter: huruf, angka, titik, _ , -).");
@@ -189,9 +198,9 @@ ${card(
     try {
       const hash = await hashPassword(password);
       await getPool().query(
-        `INSERT INTO users (username, name, nip, password_hash, role, is_principal, must_change_password)
-         VALUES (?, ?, ?, ?, ?, ?, 1)`,
-        [username, name, b.nip?.trim() || null, hash, role, b.is_principal === "1" && role === "supervisor" ? 1 : 0],
+        `INSERT INTO users (username, name, nip, password_hash, role, is_supervisor, is_principal, must_change_password)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
+        [username, name, b.nip?.trim() || null, hash, role, isSupervisorFlag, isPrincipalFlag],
       );
     } catch (err) {
       const e = err as { code?: string };
@@ -201,6 +210,30 @@ ${card(
     return new Response(null, {
       status: 302,
       headers: { Location: "/admin/guru?ok=" + encodeURIComponent(`Akun ${username} ditambahkan.`) },
+    });
+  })
+  // ---------- Nyalakan/matikan flag supervisor & Kepsek pada akun guru ----------
+  .post("/admin/guru/:id/flag", async ({ params, body }: any) => {
+    const id = Number(params.id);
+    const b = body as Record<string, string>;
+    const fail = (m: string) =>
+      new Response(null, { status: 302, headers: { Location: "/admin/guru?err=" + encodeURIComponent(m) } });
+    const [rows] = await getPool().query<(RowDataPacket & { username: string; role: string })[]>(
+      "SELECT username, role FROM users WHERE id = ?",
+      [id],
+    );
+    if (!rows[0]) return fail("Akun tidak ditemukan.");
+    if (rows[0].role === "admin") return fail("Flag tidak bisa diubah pada akun admin.");
+    // Kepala Sekolah selalu juga supervisor.
+    const isSupervisorFlag = b.is_supervisor === "1" || b.is_principal === "1" ? 1 : 0;
+    const isPrincipalFlag = b.is_principal === "1" ? 1 : 0;
+    await getPool().query(
+      "UPDATE users SET is_supervisor = ?, is_principal = ? WHERE id = ?",
+      [isSupervisorFlag, isPrincipalFlag, id],
+    );
+    return new Response(null, {
+      status: 302,
+      headers: { Location: "/admin/guru?ok=" + encodeURIComponent(`Flag akun ${rows[0].username} disimpan.`) },
     });
   })
   .post("/admin/guru/:id/hapus", async ({ params }: any) => {
@@ -498,7 +531,7 @@ ${card(
     const pool = getPool();
     const [supervisors] = await pool.query<
       (RowDataPacket & { id: number; name: string; username: string; is_principal: number })[]
-    >("SELECT id, name, username, is_principal FROM users WHERE role = 'supervisor' AND active = 1 ORDER BY name");
+    >("SELECT id, name, username, is_principal FROM users WHERE role = 'guru' AND is_supervisor = 1 AND active = 1 ORDER BY name");
     const [teachers] = await pool.query<(RowDataPacket & { id: number; name: string; username: string })[]>(
       "SELECT id, name, username FROM users WHERE role = 'guru' AND active = 1 ORDER BY name",
     );
@@ -524,6 +557,7 @@ ${card(
         continue;
       }
       const checks = teachers
+        .filter((t) => t.id !== s.id) // tidak bisa menugaskan diri sendiri
         .map(
           (t) =>
             `<label class="flex items-center gap-2 text-sm"><input type="checkbox" name="teacher_ids" value="${t.id}" ${mine.has(t.id) ? "checked" : ""} class="accent-teal-600"> ${esc(t.name)} <span class="text-slate-400">(${esc(t.username)})</span></label>`,
@@ -562,18 +596,27 @@ ${
     const raw = b.teacher_ids;
     const teacherIds = (Array.isArray(raw) ? raw : raw ? [raw] : []).map(Number).filter(Boolean);
     const pool = getPool();
-    const [sup] = await pool.query<(RowDataPacket & { role: string })[]>(
-      "SELECT role FROM users WHERE id = ?",
+    const [sup] = await pool.query<(RowDataPacket & { role: string; is_supervisor: number; is_principal: number })[]>(
+      "SELECT role, is_supervisor, is_principal FROM users WHERE id = ?",
       [supervisorId],
     );
-    if (!sup[0] || sup[0].role !== "supervisor") {
+    if (!sup[0] || sup[0].role !== "guru" || (sup[0].is_supervisor !== 1 && sup[0].is_principal !== 1)) {
       return new Response(null, { status: 302, headers: { Location: "/admin/penugasan?err=" + encodeURIComponent("Supervisor tidak ditemukan.") } });
     }
+    // Hanya akun guru (bukan admin) yang bisa ditugaskan; bukan diri sendiri.
+    const [validTeachers] = await pool.query<(RowDataPacket & { id: number })[]>(
+      teacherIds.length > 0
+        ? `SELECT id FROM users WHERE role = 'guru' AND active = 1 AND id IN (${teacherIds.map(() => "?").join(",")})`
+        : "SELECT id FROM users WHERE 1 = 0",
+      teacherIds,
+    );
+    const validIds = new Set(validTeachers.map((t) => t.id));
+    const finalIds = teacherIds.filter((id) => validIds.has(id) && id !== supervisorId);
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
       await conn.query("DELETE FROM supervisor_assignments WHERE supervisor_id = ?", [supervisorId]);
-      for (const tid of teacherIds) {
+      for (const tid of finalIds) {
         await conn.query(
           "INSERT INTO supervisor_assignments (supervisor_id, teacher_id) VALUES (?, ?)",
           [supervisorId, tid],
@@ -608,6 +651,8 @@ ${
     } catch {
       files = [];
     }
+    const dumps = files.filter((f) => f.name.endsWith(".sql.gz"));
+    const arsipBukti = files.filter((f) => f.name.endsWith(".tar.gz"));
     const msg = msgFromQuery(query as Record<string, string>);
     return html(
       user!,
@@ -634,7 +679,32 @@ ${card(
         <td class="py-2 text-right"><a class="${btnGhost}" href="/admin/backup/unduh/${encodeURIComponent(f.name)}">Unduh</a></td>
       </tr>`).join("")}</tbody></table></div>`,
 )}
-<p class="text-xs text-slate-400 mt-4">Restore dilakukan dari baris perintah (lihat README) — restore mengganti database dan membersihkan semua sesi login.</p>`,
+<div class="h-4"></div>
+${card(
+  "Restore (BERBAHAYA — mengganti semua data)",
+  `<p class="text-sm text-red-700 font-semibold mb-2">Restore MENGGANTI database dan folder bukti dengan isi backup, lalu MEMBERSIHKAN semua sesi login — semua pengguna (termasuk Anda) harus masuk ulang.</p>
+  <p class="text-sm text-slate-600 mb-3">Pilih pasangan dump + arsip bukti yang sudah ada, atau unggah berkas baru. Berkas divalidasi dulu (harus dump gezyspv-pro yang sah dan arsip yang entrinya hanya di dalam <code>bukti/</code>).</p>
+  <form method="post" action="/admin/backup/restore" enctype="multipart/form-data" class="space-y-3">
+    <div><label class="${labelCls}">Dump database (.sql.gz) — pilih yang sudah ada</label>
+      <select class="${inputCls}" name="dump_name">
+        <option value="">— pilih —</option>
+        ${dumps.map((f) => `<option value="${esc(f.name)}">${esc(f.name)}</option>`).join("")}
+      </select></div>
+    <div><label class="${labelCls}">atau unggah dump baru</label>
+      <input class="${inputCls}" type="file" name="dump_file" accept=".gz,application/gzip"></div>
+    <div><label class="${labelCls}">Arsip bukti (.tar.gz) — pilih yang sudah ada (opsional)</label>
+      <select class="${inputCls}" name="bukti_name">
+        <option value="">— tanpa arsip bukti —</option>
+        ${arsipBukti.map((f) => `<option value="${esc(f.name)}">${esc(f.name)}</option>`).join("")}
+      </select></div>
+    <div><label class="${labelCls}">atau unggah arsip bukti baru</label>
+      <input class="${inputCls}" type="file" name="bukti_file" accept=".gz,application/gzip"></div>
+    <div><label class="${labelCls}">Ketik <code>RESTORE</code> untuk mengonfirmasi</label>
+      <input class="${inputCls}" name="konfirmasi" required placeholder="RESTORE" autocomplete="off"></div>
+    <label class="flex items-start gap-2 text-sm"><input type="checkbox" name="sadar" value="1" required class="accent-red-600 mt-0.5"> Saya sadar restore mengganti SEMUA data dan mengeluarkan semua pengguna.</label>
+    <div><button type="submit" class="inline-flex items-center justify-center px-4 py-2.5 rounded-xl bg-red-600 text-white font-semibold hover:bg-red-700 cursor-pointer" onclick="return confirm('Yakin restore? Semua data sekarang akan diganti dengan isi backup.')">Restore Sekarang</button></div>
+  </form>`,
+)}`,
       "backup",
     );
   })
@@ -674,4 +744,177 @@ ${card(
     return new Response(file, {
       headers: { "Content-Disposition": `attachment; filename="${name}"` },
     });
+  })
+
+  // ---------- Restore backup ----------
+  .post("/admin/backup/restore", async ({ user, body }: any) => {
+    const path = await import("node:path");
+    const { mkdir, writeFile, rm } = await import("node:fs/promises");
+    const dataDir = process.env.DATA_DIR ?? "./data";
+    const backupDir = path.join(dataDir, "backups");
+    const fail = (m: string) =>
+      new Response(null, { status: 302, headers: { Location: "/admin/backup?err=" + encodeURIComponent(m) } });
+    const b = body as Record<string, unknown>;
+    // Konfirmasi eksplisit: ketik RESTORE + centang kesadaran.
+    if (String(b.konfirmasi ?? "").trim() !== "RESTORE" || b.sadar !== "1") {
+      return fail("Restore dibatalkan: ketik RESTORE dan centang pernyataan kesadaran.");
+    }
+    const tmpDir = path.join(backupDir, ".restore-tmp");
+    let dumpPath: string | null = null;
+    let evidencePath: string | null = null;
+    try {
+      await mkdir(tmpDir, { recursive: true });
+      // Dump: unggahan diutamakan, kalau tidak ada pakai pilihan yang sudah ada.
+      const dumpFile = b.dump_file as File | undefined;
+      if (dumpFile && typeof dumpFile.arrayBuffer === "function" && dumpFile.size > 0) {
+        if (!dumpFile.name.endsWith(".sql.gz")) return fail("Berkas dump harus .sql.gz.");
+        dumpPath = path.join(tmpDir, "dump.sql.gz");
+        await writeFile(dumpPath, Buffer.from(await dumpFile.arrayBuffer()));
+      } else if (typeof b.dump_name === "string" && b.dump_name) {
+        if (!isValidBackupName(b.dump_name) || !b.dump_name.endsWith(".sql.gz")) {
+          return fail("Nama dump tidak valid.");
+        }
+        dumpPath = path.join(backupDir, b.dump_name);
+      }
+      if (!dumpPath) return fail("Pilih atau unggah dump database (.sql.gz).");
+      const buktiFile = b.bukti_file as File | undefined;
+      if (buktiFile && typeof buktiFile.arrayBuffer === "function" && buktiFile.size > 0) {
+        if (!buktiFile.name.endsWith(".tar.gz")) return fail("Arsip bukti harus .tar.gz.");
+        evidencePath = path.join(tmpDir, "bukti.tar.gz");
+        await writeFile(evidencePath, Buffer.from(await buktiFile.arrayBuffer()));
+      } else if (typeof b.bukti_name === "string" && b.bukti_name) {
+        if (!isValidBackupName(b.bukti_name) || !b.bukti_name.endsWith(".tar.gz")) {
+          return fail("Nama arsip bukti tidak valid.");
+        }
+        evidencePath = path.join(backupDir, b.bukti_name);
+      }
+      const result = await restoreBackup(getPool(), {
+        config: configFromEnv(),
+        dataDir,
+        dumpPath,
+        evidencePath,
+      }, user!.id);
+      return new Response(null, {
+        status: 302,
+        // Sesi login sudah dibersihkan oleh restore — arahkan ke login.
+        headers: {
+          Location:
+            "/login?ok=" +
+            encodeURIComponent(
+              `Restore selesai (${result.sessions} sesi, ${result.templates} templat). Semua sesi login dibersihkan — silakan masuk kembali.`,
+            ),
+        },
+      });
+    } catch (err) {
+      return fail("Restore gagal: " + (err as Error).message.slice(0, 300));
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  })
+
+  // ---------- Audit log ----------
+  .get("/admin/log", async ({ user, query }: any) => {
+    const pool = getPool();
+    const q = query as Record<string, string | undefined>;
+    const aksi = (q.aksi ?? "").trim();
+    const pengguna = (q.pengguna ?? "").trim();
+    const page = Math.max(1, Number(q.page ?? 1) || 1);
+    const perPage = 50;
+    const offset = (page - 1) * perPage;
+    const where: string[] = [];
+    const params: unknown[] = [];
+    if (aksi) {
+      where.push("a.action = ?");
+      params.push(aksi);
+    }
+    if (pengguna) {
+      where.push("(u.username = ? OR u.name LIKE ?)");
+      params.push(pengguna, `%${pengguna}%`);
+    }
+    const whereSql = where.length > 0 ? "WHERE " + where.join(" AND ") : "";
+    const [actions] = await pool.query<(RowDataPacket & { action: string })[]>(
+      "SELECT DISTINCT action FROM audit_logs ORDER BY action",
+    );
+    const [countRows] = await pool.query<(RowDataPacket & { c: number })[]>(
+      `SELECT COUNT(*) AS c FROM audit_logs a LEFT JOIN users u ON u.id = a.user_id ${whereSql}`,
+      params,
+    );
+    const total = countRows[0]?.c ?? 0;
+    const [rows] = await pool.query<
+      (RowDataPacket & {
+        id: number;
+        user_id: number | null;
+        username: string | null;
+        name: string | null;
+        action: string;
+        entity: string | null;
+        entity_id: number | null;
+        detail: string | null;
+        created_at: string;
+      })[]
+    >(
+      `SELECT a.*, u.username, u.name
+       FROM audit_logs a LEFT JOIN users u ON u.id = a.user_id
+       ${whereSql}
+       ORDER BY a.id DESC LIMIT ? OFFSET ?`,
+      [...params, perPage, offset],
+    );
+    const msg = msgFromQuery(query as Record<string, string>);
+    const pageLink = (p: number) =>
+      `/admin/log?aksi=${encodeURIComponent(aksi)}&pengguna=${encodeURIComponent(pengguna)}&page=${p}`;
+    const detailText = (d: string | null): string => {
+      if (!d) return "—";
+      try {
+        const obj = JSON.parse(d) as Record<string, unknown>;
+        return Object.entries(obj)
+          .map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`)
+          .join(" · ");
+      } catch {
+        return d.slice(0, 200);
+      }
+    };
+    return html(
+      user!,
+      await schoolName(),
+      `
+<h1 class="text-2xl font-bold text-slate-900 mb-6">Audit Log</h1>
+${msg ? alertBox(query.ok ? "ok" : "err", msg) : ""}
+${card(
+  "Filter",
+  `<form method="get" action="/admin/log" class="flex flex-wrap gap-3 items-end">
+    <div><label class="${labelCls}">Aksi</label>
+      <select class="${inputCls}" name="aksi">
+        <option value="">Semua aksi</option>
+        ${actions.map((a) => `<option value="${esc(a.action)}" ${a.action === aksi ? "selected" : ""}>${esc(a.action)}</option>`).join("")}
+      </select></div>
+    <div><label class="${labelCls}">Pengguna (username/nama)</label>
+      <input class="${inputCls}" name="pengguna" value="${esc(pengguna)}" placeholder="mis. helmi"></div>
+    <button type="submit" class="${btnPrimary}">Filter</button>
+    <a class="${btnGhost}" href="/admin/log">Reset</a>
+  </form>`,
+)}
+<div class="h-4"></div>
+${card(
+  `Riwayat perubahan (${total} entri, terbaru dulu)`,
+  rows.length === 0
+    ? `<p class="text-sm text-slate-500">Tidak ada entri audit log yang cocok.</p>`
+    : `<div class="overflow-x-auto"><table class="w-full text-sm">
+      <thead><tr class="text-left text-slate-500 border-b">
+        <th class="py-2 pr-2">Waktu</th><th class="py-2 pr-2">Pengguna</th><th class="py-2 pr-2">Aksi</th>
+        <th class="py-2 pr-2">Entitas</th><th class="py-2 pr-2">Detail</th></tr></thead>
+      <tbody>${rows
+        .map(
+          (r) => `<tr class="border-b border-slate-100 align-top">
+          <td class="py-2 pr-2 whitespace-nowrap">${esc(r.created_at)}</td>
+          <td class="py-2 pr-2">${esc(r.username ?? r.name ?? "—")}</td>
+          <td class="py-2 pr-2"><code>${esc(r.action)}</code></td>
+          <td class="py-2 pr-2">${esc(r.entity ?? "")}${r.entity_id ? ` #${r.entity_id}` : ""}</td>
+          <td class="py-2 pr-2 text-slate-600">${esc(detailText(r.detail))}</td>
+        </tr>`,
+        )
+        .join("")}</tbody></table></div>
+    ${total > perPage ? `<div class="flex gap-2 mt-4">${page > 1 ? `<a class="${btnGhost}" href="${pageLink(page - 1)}">← Sebelumnya</a>` : ""}${offset + perPage < total ? `<a class="${btnGhost}" href="${pageLink(page + 1)}">Berikutnya →</a>` : ""}</div>` : ""}`,
+)}`,
+      "log",
+    );
   });

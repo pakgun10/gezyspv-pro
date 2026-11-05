@@ -2,6 +2,7 @@ import { Elysia } from "elysia";
 import type { RowDataPacket } from "mysql2/promise";
 import { getPool } from "../db";
 import { authPlugin, requireAuth } from "./auth";
+import { isSupervisor } from "../rbac";
 import { alertBox, btnGhost, card, esc, layout, statCard } from "../views";
 import {
   activePeriod,
@@ -200,9 +201,9 @@ export const profileRoutes = new Elysia()
     const scopeNote =
       scope === null
         ? ""
-        : user!.role === "guru"
-          ? `<p class="text-sm text-slate-500 mb-4">Rekap ini hanya mencakup sesi atas diri Anda.</p>`
-          : `<p class="text-sm text-slate-500 mb-4">Rekap ini hanya mencakup guru yang ditugaskan kepada Anda.</p>`;
+        : isSupervisor(user!)
+          ? `<p class="text-sm text-slate-500 mb-4">Rekap ini hanya mencakup guru yang ditugaskan kepada Anda.</p>`
+          : `<p class="text-sm text-slate-500 mb-4">Rekap ini hanya mencakup sesi atas diri Anda.</p>`;
     const classIds = [...new Set(recap.sessions.map((s) => s.class_id))];
     return html(
       user!,
@@ -241,7 +242,7 @@ export const profileRoutes = new Elysia()
            ? `<p class="text-sm text-slate-500">Belum ada sesi selesai.</p>`
            : sessionRows(recap.sessions, true),
        )}
-       ${recap.unsupervised !== null && user!.role !== "guru"
+       ${recap.unsupervised !== null && (user!.role === "admin" || isSupervisor(user!))
          ? `<div class="mt-4">${card(
              "Guru yang belum disupervisi (periode aktif)",
              recap.unsupervised.length === 0

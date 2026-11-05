@@ -2,6 +2,7 @@ import type mysql from "mysql2/promise";
 import type { RowDataPacket } from "mysql2/promise";
 import type { SessionUser } from "../auth";
 import { audit, loadSession, loadSnapshot } from "./sessions";
+import { isSupervisor } from "../rbac";
 import { elementScores, finalScore100, mostFrequentLabel, predicateFor } from "./scores";
 
 /**
@@ -179,7 +180,7 @@ export async function getNarrativeForDisplay(
  * membaca; supervisor lain dan admin tidak mengedit.
  */
 export function canEditNarrative(user: SessionUser, session: { supervisor_id: number }): boolean {
-  return user.role === "supervisor" && session.supervisor_id === user.id;
+  return isSupervisor(user) && session.supervisor_id === user.id;
 }
 
 /** Simpan narasi hasil edit supervisor. Menolak bila bukan pembuat sesi. */

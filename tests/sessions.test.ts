@@ -66,8 +66,9 @@ const seedTemplateId = seedTplRows[0]!.id;
 async function makeUser(
   username: string,
   name: string,
-  role: "admin" | "supervisor" | "guru",
+  role: "admin" | "guru" = "guru",
   isPrincipal = 0,
+  isSupervisorFlag = 0,
 ): Promise<SessionUser> {
   const [existing] = await pool.query<(RowDataPacket & { id: number })[]>(
     "SELECT id FROM users WHERE username = ?",
@@ -86,8 +87,8 @@ async function makeUser(
     await pool.query("DELETE FROM users WHERE id = ?", [uid]);
   }
   const [res] = await pool.query<mysql.ResultSetHeader>(
-    "INSERT INTO users (username, name, password_hash, role, is_principal, must_change_password) VALUES (?, ?, ?, ?, ?, 0)",
-    [username, name, await hashPassword("rahasia123"), role, isPrincipal],
+    "INSERT INTO users (username, name, password_hash, role, is_supervisor, is_principal, must_change_password) VALUES (?, ?, ?, ?, ?, ?, 0)",
+    [username, name, await hashPassword("rahasia123"), role, isSupervisorFlag, isPrincipal],
   );
   return {
     id: res.insertId,
@@ -95,18 +96,19 @@ async function makeUser(
     name,
     nip: null,
     role,
+    is_supervisor: isSupervisorFlag === 1,
     is_principal: isPrincipal === 1,
     must_change_password: false,
     active: true,
   };
 }
 
-const sup1 = await makeUser("sup_sesi", "Supervisor Sesi", "supervisor");
-const kepsek = await makeUser("kepsek_sesi", "Kepala Sekolah", "supervisor", 1);
+const sup1 = await makeUser("sup_sesi", "Supervisor Sesi", "guru", 0, 1);
+const kepsek = await makeUser("kepsek_sesi", "Kepala Sekolah", "guru", 1, 1);
 const guru1 = await makeUser("guru_sesi1", "Guru Satu", "guru");
 const guru2 = await makeUser("guru_sesi2", "Guru Dua", "guru");
 const guruHttp = await makeUser("guru_sesi_http", "Guru HTTP", "guru");
-const supHttp = await makeUser("sup_sesi_http", "Supervisor HTTP", "supervisor");
+const supHttp = await makeUser("sup_sesi_http", "Supervisor HTTP", "guru", 0, 1);
 
 await pool.query("INSERT INTO supervisor_assignments (supervisor_id, teacher_id) VALUES (?, ?)", [
   sup1.id,

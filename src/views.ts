@@ -1,4 +1,5 @@
 import type { SessionUser } from "./auth";
+import { isSupervisor } from "./rbac";
 
 export function esc(s: string | null | undefined): string {
   return (s ?? "")
@@ -11,7 +12,6 @@ export function esc(s: string | null | undefined): string {
 
 const ROLE_LABEL: Record<string, string> = {
   admin: "Admin",
-  supervisor: "Supervisor",
   guru: "Guru",
 };
 
@@ -37,11 +37,12 @@ export function layout(opts: {
         <a href="/admin/periode" class="px-3 py-2 rounded-lg ${active === "periode" ? "bg-teal-50 text-teal-800 font-semibold" : "text-slate-600 hover:bg-slate-100"}">Periode</a>
         <a href="/admin/penugasan" class="px-3 py-2 rounded-lg ${active === "penugasan" ? "bg-teal-50 text-teal-800 font-semibold" : "text-slate-600 hover:bg-slate-100"}">Penugasan</a>
         <a href="/admin/templat" class="px-3 py-2 rounded-lg ${active === "templat" ? "bg-teal-50 text-teal-800 font-semibold" : "text-slate-600 hover:bg-slate-100"}">Templat</a>
-        <a href="/admin/backup" class="px-3 py-2 rounded-lg ${active === "backup" ? "bg-teal-50 text-teal-800 font-semibold" : "text-slate-600 hover:bg-slate-100"}">Backup</a>`
+        <a href="/admin/backup" class="px-3 py-2 rounded-lg ${active === "backup" ? "bg-teal-50 text-teal-800 font-semibold" : "text-slate-600 hover:bg-slate-100"}">Backup</a>
+        <a href="/admin/log" class="px-3 py-2 rounded-lg ${active === "log" ? "bg-teal-50 text-teal-800 font-semibold" : "text-slate-600 hover:bg-slate-100"}">Log</a>`
             : ""
         }
         ${
-          user.role === "supervisor"
+          isSupervisor(user)
             ? `
         <a href="/templat" class="px-3 py-2 rounded-lg ${active === "templat" ? "bg-teal-50 text-teal-800 font-semibold" : "text-slate-600 hover:bg-slate-100"}">Predikat Templat</a>`
             : ""
@@ -71,7 +72,7 @@ export function layout(opts: {
       </span>
     </a>
     ${nav}
-    ${user ? `<span class="text-sm text-slate-600">${esc(user.name)} <span class="ml-1 inline-block px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 text-xs font-semibold">${ROLE_LABEL[user.role] ?? user.role}${user.is_principal ? " · Kepsek" : ""}</span></span>` : ""}
+    ${user ? `<span class="text-sm text-slate-600">${esc(user.name)} <span class="ml-1 inline-block px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 text-xs font-semibold">${ROLE_LABEL[user.role] ?? user.role}${user.is_supervisor ? " · Supervisor" : ""}${user.is_principal ? " · Kepsek" : ""}</span></span>` : ""}
   </div>
 </header>
 <main class="max-w-6xl mx-auto px-4 py-6 2xl:max-w-7xl">

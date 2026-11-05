@@ -3,7 +3,7 @@ import type { RowDataPacket } from "mysql2/promise";
 import { getPool } from "../db";
 import { authPlugin, requireAuth } from "./auth";
 import { alertBox, card, esc, layout, statCard } from "../views";
-import { supervisedTeacherIds } from "../rbac";
+import { isSupervisor, supervisedTeacherIds } from "../rbac";
 import { STAGE_LABEL, listSessionsForUser } from "../lib/sessions";
 
 export const dashboardRoutes = new Elysia().use(authPlugin).onBeforeHandle(requireAuth).get(
@@ -24,7 +24,7 @@ export const dashboardRoutes = new Elysia().use(authPlugin).onBeforeHandle(requi
       const [guru, kelas, supervisor, templat, periode, sesi] = await Promise.all([
         one("SELECT COUNT(*) AS c FROM users WHERE role = 'guru'"),
         one("SELECT COUNT(*) AS c FROM classes"),
-        one("SELECT COUNT(*) AS c FROM users WHERE role = 'supervisor'"),
+        one("SELECT COUNT(*) AS c FROM users WHERE role = 'guru' AND is_supervisor = 1"),
         one("SELECT COUNT(*) AS c FROM templates"),
         one("SELECT COUNT(*) AS c FROM periods WHERE is_active = 1"),
         one("SELECT COUNT(*) AS c FROM sessions"),
@@ -38,9 +38,9 @@ export const dashboardRoutes = new Elysia().use(authPlugin).onBeforeHandle(requi
 <h1 class="text-2xl font-bold text-slate-900 mb-1">Dasbor Admin</h1>
 <p class="text-slate-500 mb-6">Selamat datang, ${user!.name}. Kelola data dasar supervisi dari sini.</p>
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-  ${statCard("Guru", guru, "akun guru terdaftar")}
+  ${statCard("Guru", guru, "akun guru terdaftar (termasuk supervisor)")}
   ${statCard("Kelas", kelas, "kelas pada semua periode")}
-  ${statCard("Supervisor", supervisor, "akun supervisor")}
+  ${statCard("Supervisor", supervisor, "akun guru berflag supervisor")}
   ${statCard("Sesi supervisi", sesi, "semua sesi")}
 </div>
 <div class="grid md:grid-cols-2 gap-4">
@@ -50,7 +50,7 @@ export const dashboardRoutes = new Elysia().use(authPlugin).onBeforeHandle(requi
       <li>Periksa <a class="text-teal-700 font-semibold underline" href="/admin/pengaturan">pengaturan sekolah</a> (nama sekolah, kepala sekolah, tempat tanda tangan).</li>
       <li>Tambah guru lewat <a class="text-teal-700 font-semibold underline" href="/admin/guru">menu Guru</a> (manual atau impor CSV).</li>
       <li>Tambah kelas lewat <a class="text-teal-700 font-semibold underline" href="/admin/kelas">menu Kelas</a> dan aktifkan periode di <a class="text-teal-700 font-semibold underline" href="/admin/periode">menu Periode</a>.</li>
-      <li>Buat akun supervisor lalu tetapkan penugasannya di <a class="text-teal-700 font-semibold underline" href="/admin/penugasan">menu Penugasan</a>.</li>
+      <li>Nyalakan flag supervisor pada akun guru, lalu tetapkan penugasannya di <a class="text-teal-700 font-semibold underline" href="/admin/penugasan">menu Penugasan</a>.</li>
     </ol>
     <p class="text-sm text-slate-500 mt-3">Periode aktif: <strong>${periode} periode</strong> (seharusnya tepat 1).</p>`,
   )}
@@ -67,7 +67,7 @@ export const dashboardRoutes = new Elysia().use(authPlugin).onBeforeHandle(requi
      <p><a class="text-teal-700 font-semibold underline text-sm" href="/rekap/periode/${activePeriodId}">Lihat rekap periode aktif →</a></p>`,
   ) : ""}
 </div>`;
-    } else if (user!.role === "supervisor") {
+    } else if (isSupervisor(user!)) {
       const ids = await supervisedTeacherIds(pool, user!);
       const [templates] = await pool.query<(RowDataPacket & { c: number })[]>(
         "SELECT COUNT(*) AS c FROM templates WHERE status = 'aktif'",
@@ -78,6 +78,9 @@ export const dashboardRoutes = new Elysia().use(authPlugin).onBeforeHandle(requi
       const predikatTemplates = predikatRows as { id: number; title: string }[];
       const allSessions = await listSessionsForUser(pool, user!);
       const mySessions = allSessions.filter((s) => s.supervisor_id === user!.id);
+      // Satu akun dua peran: sesi atas diri sendiri (sebagai guru yang disupervisi).
+      const aboutMe = allSessions.filter((s) => s.teacher_id === user!.id);
+      const waitingAboutMe = aboutMe.filter((s) => s.status === "pasca");
       const [activePeriod] = await pool.query<(RowDataPacket & { id: number })[]>(
         "SELECT id FROM periods WHERE is_active = 1 ORDER BY id LIMIT 1",
       );
@@ -114,6 +117,15 @@ ${card(
     : notYetSupervised.length === 0
       ? `<p class="text-sm text-emerald-700">Semua guru yang ditugaskan sudah pernah disupervisi pada periode aktif ini.</p>`
       : `<ul class="text-sm text-slate-700 space-y-1">${notYetSupervised.map((g) => `<li>· <a class="text-teal-700 font-semibold underline" href="/guru/${g.id}">${esc(g.name)}</a> <span class="text-slate-400">(${esc(g.username)})</span> — <a class="text-teal-700 underline" href="/rekap/guru/${g.id}">Rekap</a></li>`).join("")}</ul>`,
+)}
+</div>
+<div class="mt-4">
+${card(
+  "Supervisi atas Anda",
+  aboutMe.length === 0
+    ? `<p class="text-sm text-slate-500">Belum ada sesi supervisi atas Anda.</p>`
+    : `${waitingAboutMe.length > 0 ? `<p class="text-sm text-amber-700 font-semibold mb-2">Ada ${waitingAboutMe.length} sesi yang menunggu refleksi Anda.</p>` : ""}
+       <ul class="text-sm space-y-1">${aboutMe.slice(0, 8).map((s) => `<li>· <a class="text-teal-700 font-semibold underline" href="/supervisi/${s.id}">${esc(s.supervisor_name)}</a> — ${esc(s.class_name)}, ${STAGE_LABEL[s.status]}${s.status === "pasca" ? ` <span class="ml-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-semibold">Menunggu refleksi Anda</span>` : ""}</li>`).join("")}</ul>`,
 )}
 </div>
 <div class="mt-4">

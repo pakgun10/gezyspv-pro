@@ -16,9 +16,9 @@ describe("password (argon2id)", () => {
 });
 
 describe("canSupervisePure — aturan penugasan", () => {
-  const kepsek = { role: "supervisor" as const, is_principal: true };
-  const supervisor = { role: "supervisor" as const, is_principal: false };
-  const guru = { role: "guru" as const, is_principal: false };
+  const kepsek = { role: "guru" as const, is_principal: true, is_supervisor: true };
+  const supervisor = { role: "guru" as const, is_principal: false, is_supervisor: true };
+  const guru = { role: "guru" as const, is_principal: false, is_supervisor: false };
 
   test("Kepala Sekolah boleh mensupervisi semua guru", () => {
     expect(canSupervisePure(kepsek, [], 99)).toBe(true);

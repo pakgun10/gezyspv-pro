@@ -34,8 +34,9 @@ await seedAll(pool, hashPassword, "admin123");
 async function makeUser(
   username: string,
   name: string,
-  role: "admin" | "supervisor" | "guru",
+  role: "admin" | "guru" = "guru",
   isPrincipal = 0,
+  isSupervisorFlag = 0,
 ): Promise<number> {
   // Bersihkan sisa run sebelumnya: sesi dan penugasan mereferensi user (FK).
   const [existing] = await pool.query<(RowDataPacket & { id: number })[]>(
@@ -52,14 +53,14 @@ async function makeUser(
     await pool.query("DELETE FROM users WHERE id = ?", [uid]);
   }
   const [res] = await pool.query(
-    "INSERT INTO users (username, name, password_hash, role, is_principal, must_change_password) VALUES (?, ?, ?, ?, ?, 0)",
-    [username, name, await hashPassword("rahasia123"), role, isPrincipal],
+    "INSERT INTO users (username, name, password_hash, role, is_supervisor, is_principal, must_change_password) VALUES (?, ?, ?, ?, ?, ?, 0)",
+    [username, name, await hashPassword("rahasia123"), role, isSupervisorFlag, isPrincipal],
   );
   return (res as { insertId: number }).insertId;
 }
 
 const adminId = await makeUser("admin2", "Admin Tes", "admin");
-const supId = await makeUser("sup1", "Supervisor Tes", "supervisor");
+const supId = await makeUser("sup1", "Supervisor Tes", "guru", 0, 1);
 const guruId = await makeUser("guru1", "Guru Tes", "guru");
 void adminId;
 void supId;
