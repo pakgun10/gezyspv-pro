@@ -35,7 +35,14 @@ export function layout(opts: {
         <a href="/admin/kelas" class="px-3 py-2 rounded-lg ${active === "kelas" ? "bg-teal-50 text-teal-800 font-semibold" : "text-slate-600 hover:bg-slate-100"}">Kelas</a>
         <a href="/admin/periode" class="px-3 py-2 rounded-lg ${active === "periode" ? "bg-teal-50 text-teal-800 font-semibold" : "text-slate-600 hover:bg-slate-100"}">Periode</a>
         <a href="/admin/penugasan" class="px-3 py-2 rounded-lg ${active === "penugasan" ? "bg-teal-50 text-teal-800 font-semibold" : "text-slate-600 hover:bg-slate-100"}">Penugasan</a>
+        <a href="/admin/templat" class="px-3 py-2 rounded-lg ${active === "templat" ? "bg-teal-50 text-teal-800 font-semibold" : "text-slate-600 hover:bg-slate-100"}">Templat</a>
         <a href="/admin/backup" class="px-3 py-2 rounded-lg ${active === "backup" ? "bg-teal-50 text-teal-800 font-semibold" : "text-slate-600 hover:bg-slate-100"}">Backup</a>`
+            : ""
+        }
+        ${
+          user.role === "supervisor"
+            ? `
+        <a href="/templat" class="px-3 py-2 rounded-lg ${active === "templat" ? "bg-teal-50 text-teal-800 font-semibold" : "text-slate-600 hover:bg-slate-100"}">Predikat Templat</a>`
             : ""
         }
         <a href="/ganti-sandi" class="px-3 py-2 rounded-lg text-slate-600 hover:bg-slate-100">Ganti Sandi</a>

@@ -6,6 +6,7 @@ import { seedAll } from "./lib/seed";
 import { authRoutes } from "./routes/auth";
 import { dashboardRoutes } from "./routes/dashboard";
 import { adminRoutes } from "./routes/admin";
+import { templateAdminRoutes, templatePredicateRoutes } from "./routes/templates";
 
 /** Bangun aplikasi Elysia (tanpa efek samping; migrasi+seed ada di main()). */
 export function createApp() {
@@ -13,12 +14,14 @@ export function createApp() {
     .get("/api/kesehatan", () => ({
       ok: true,
       app: "gezyspv-pro",
-      fase: 0,
+      fase: 1,
       domain: "spv.pakgun.web.id",
     }))
     .use(authRoutes)
     .use(dashboardRoutes)
     .use(adminRoutes)
+    .use(templateAdminRoutes)
+    .use(templatePredicateRoutes)
     // Prefix /static (bukan "/"): plugin statik dengan prefix "/" mendaftarkan
     // route GET / yang menimpa dasbor (NotFoundError untuk direktori public).
     .use(staticPlugin({ assets: "public", prefix: "/static" }))

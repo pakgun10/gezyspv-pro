@@ -9,12 +9,15 @@ dan menyusun rencana tindak lanjut. Bukan CBT, bukan penilaian murid.
 Stack: **Bun + Elysia + MariaDB**, Tailwind CSS v4. Rencana lengkap:
 `../gezyspv-pro-plan/implementation_plan.md`.
 
-> **Status: Fase 0 (fondasi) selesai.** Yang sudah ada: migrasi
-> MariaDB, auth username + kata sandi, pengaturan sekolah, CRUD
-> periode/kelas/akun, penugasan supervisor → guru, impor CSV
-> transaksional, seed templat PPB/GM, halaman login + dasbor, dan
-> skrip backup. Sesi supervisi, skor, rekap, dan cetak dibangun
-> pada Fase 1–4.
+> **Status: Fase 1 (templat instrumen) selesai.** Yang sudah ada:
+> migrasi MariaDB, auth username + kata sandi, pengaturan sekolah,
+> CRUD periode/kelas/akun, penugasan supervisor → guru, impor CSV
+> transaksional, seed templat PPB/GM, halaman login + dasbor, skrip
+> backup, **dan CRUD templat instrumen** (elemen, indikator,
+> pertanyaan pra/pasca, butir RTL, prinsip, label skala, rentang
+> predikat), status draf/aktif/arsip, salin templat untuk tahun ajaran
+> baru, serta snapshot templat per sesi. Sesi supervisi, skor, rekap,
+> dan cetak dibangun pada Fase 2–4.
 
 ## Menjalankan lokal
 
@@ -84,14 +87,49 @@ Aplikasi membaca kredensial hanya dari environment (`.env`,
 gitignored). Jangan pernah menulis kata sandi database di kode
 atau di README.
 
+## Templat instrumen
+
+Instrumen supervisi adalah **data, bukan kode**: admin mengelolanya di
+menu **Templat** (`/admin/templat`). Templat bawaan "Supervisi
+Akademik PPB/GM 2026/2027" (3 prinsip, 4 elemen, 11 indikator,
+10 pertanyaan, 3 butir RTL, 5 predikat) sudah terisi dari seed.
+
+- **Status:** `draf` (bisa diedit, belum bisa dipakai sesi baru),
+  `aktif` (bisa dipakai sesi baru), `arsip` (tidak bisa diedit dan
+  tidak bisa dipakai sesi baru; menyalinnya tetap bisa). Ubah status
+  hanya lewat tombol **Aktifkan** / **Arsipkan** / **Kembalikan ke draf**
+  — bukan lewat form edit.
+- **Salin untuk tahun ajaran baru:** tombol **Salin** menduplikasi
+  lengkap isi templat (prinsip, elemen + indikator, label skala,
+  pertanyaan, RTL, predikat) menjadi templat baru berstatus `draf`
+  dengan judul lama + " (Salinan)". Templat seed boleh disalin.
+- **Hapus:** templat yang sudah pernah dipakai sesi mana pun
+  **tidak boleh dihapus** (tolak dengan pesan; yang bisa dilakukan
+  hanya mengarsipkan). Templat seed juga tidak boleh dihapus.
+  Templat yang belum pernah dipakai boleh dihapus (dengan konfirmasi).
+- **Skala penilaian:** 4, 10, atau 100. Mengubah skala ditolak bila
+  ada label skala yang nilainya di luar rentang baru. Nilai akhir
+  sesi selalu skala 100 + predikat.
+- **Predikat:** rentang min–max (0–100) + label, **tidak boleh
+  tumpang tindih**. Rentang predikat boleh diubah oleh admin
+  **atau supervisor** — lewat halaman terpisah
+  (`/templat/:id/predikat`, ditautkan dari dasbor supervisor).
+  Supervisor tidak bisa mengubah bagian templat lainnya; guru
+  tidak bisa membuka halaman templat sama sekali (403).
+- **Snapshot:** saat sesi dibuat (Fase 2), isi templat disalin ke
+  tabel `session_*` (fungsi `snapshotTemplateForSession` di
+  `src/lib/snapshot.ts`). Edit templat sesudahnya tidak mengubah
+  sesi lama — riwayat aman dari pergantian instrumen tahunan.
+
 ## Tes
 
 ```bash
 bun test
 ```
 
-Tes memakai database terpisah (`gezyspv_test`, dan
-`gezyspv_test_http` untuk tes HTTP) yang dibuat otomatis oleh
+Tes memakai database terpisah (`gezyspv_test`,
+`gezyspv_test_http` untuk tes HTTP, dan `gezyspv_test_templates`
+untuk tes templat) yang dibuat otomatis oleh
 helper tes — dengan catatan MariaDB sudah terinstal dan proses tes
 berjalan sebagai root OS (untuk `CREATE DATABASE` via unix socket),
 atau database tes sudah dibuat sebelumnya lewat `setup-db`.
@@ -108,6 +146,10 @@ Isi tes:
   satu baris salah).
 - `tests/http.test.ts` — login lewat HTTP, cookie sesi, dan RBAC
   (guru mendapat 403 di `/admin`).
+- `tests/templates.test.ts` — CRUD templat + validasi, aturan status
+  draf/aktif/arsip, salin lengkap, tolak hapus templat terpakai,
+  RBAC predikat (supervisor boleh, guru 403), dan snapshot yang
+  tidak berubah setelah templat diedit.
 
 ## Backup & restore
 

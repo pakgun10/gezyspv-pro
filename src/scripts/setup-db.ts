@@ -34,6 +34,7 @@ await q(`CREATE USER IF NOT EXISTS '${dbUser}'@'127.0.0.1' IDENTIFIED BY '${dbPa
 await q(`GRANT ALL PRIVILEGES ON \`${dbName}\`.* TO '${dbUser}'@'127.0.0.1'`);
 await q(`GRANT ALL PRIVILEGES ON \`${testDbName}\`.* TO '${dbUser}'@'127.0.0.1'`);
 await q(`GRANT ALL PRIVILEGES ON \`gezyspv_test_http\`.* TO '${dbUser}'@'127.0.0.1'`);
+await q(`GRANT ALL PRIVILEGES ON \`gezyspv_test_templates\`.* TO '${dbUser}'@'127.0.0.1'`);
 await q("FLUSH PRIVILEGES");
 await root.end();
 

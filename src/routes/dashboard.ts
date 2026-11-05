@@ -2,7 +2,7 @@ import { Elysia } from "elysia";
 import type { RowDataPacket } from "mysql2/promise";
 import { getPool } from "../db";
 import { authPlugin, requireAuth } from "./auth";
-import { alertBox, card, layout, statCard } from "../views";
+import { alertBox, card, esc, layout, statCard } from "../views";
 import { supervisedTeacherIds } from "../rbac";
 
 export const dashboardRoutes = new Elysia().use(authPlugin).onBeforeHandle(requireAuth).get(
@@ -49,8 +49,8 @@ export const dashboardRoutes = new Elysia().use(authPlugin).onBeforeHandle(requi
   )}
   ${card(
     "Supervisi (Fase 2)",
-    `<p class="text-sm text-slate-700">Pembuatan sesi supervisi, pengisian skor, dan rekap dibangun pada Fase 2–3. Templat instrumen bawaan sudah tersedia di database (seed) dan akan bisa dikelola pada Fase 1.</p>
-    ${alertBox("info", "Fase 0 = fondasi: data dasar, auth, dan penugasan supervisor.")}`,
+    `<p class="text-sm text-slate-700">Pembuatan sesi supervisi, pengisian skor, dan rekap dibangun pada Fase 2–3. Templat instrumen sudah bisa dikelola di <a class="text-teal-700 font-semibold underline" href="/admin/templat">menu Templat</a> (buat, salin untuk tahun ajaran baru, arsipkan).</p>
+    ${alertBox("info", "Fase 1 = templat dan versi tahunan: CRUD templat, status draf/aktif/arsip, salin, dan snapshot per sesi.")}`,
   )}
 </div>`;
     } else if (user!.role === "supervisor") {
@@ -58,6 +58,10 @@ export const dashboardRoutes = new Elysia().use(authPlugin).onBeforeHandle(requi
       const [templates] = await pool.query<(RowDataPacket & { c: number })[]>(
         "SELECT COUNT(*) AS c FROM templates WHERE status = 'aktif'",
       );
+      const [predikatRows] = await pool.query<(RowDataPacket & { id: number; title: string })[]>(
+        "SELECT id, title FROM templates WHERE status IN ('draf', 'aktif') ORDER BY title",
+      );
+      const predikatTemplates = predikatRows as { id: number; title: string }[];
       body = `
 <h1 class="text-2xl font-bold text-slate-900 mb-1">Dasbor Supervisor</h1>
 <p class="text-slate-500 mb-6">Selamat datang, ${user!.name}${user!.is_principal ? " (Kepala Sekolah)" : ""}.</p>
@@ -68,7 +72,11 @@ export const dashboardRoutes = new Elysia().use(authPlugin).onBeforeHandle(requi
 </div>
 ${card("Guru yang Anda supervisi", ids.length === 0
   ? `<p class="text-sm text-slate-500">Belum ada penugasan. Hubungi admin.</p>`
-  : `<ul class="text-sm text-slate-700 space-y-1">${(await pool.query<(RowDataPacket & { id: number; name: string; username: string })[]>("SELECT id, name, username FROM users WHERE id IN (?) ORDER BY name", [ids.length ? ids : [0]]))[0].map((g) => `<li>· ${g.name} <span class="text-slate-400">(${g.username})</span></li>`).join("")}</ul>`)}`;
+  : `<ul class="text-sm text-slate-700 space-y-1">${(await pool.query<(RowDataPacket & { id: number; name: string; username: string })[]>("SELECT id, name, username FROM users WHERE id IN (?) ORDER BY name", [ids.length ? ids : [0]]))[0].map((g) => `<li>· ${g.name} <span class="text-slate-400">(${g.username})</span></li>`).join("")}</ul>`)}
+${card("Predikat templat", predikatTemplates.length === 0
+  ? `<p class="text-sm text-slate-500">Belum ada templat.</p>`
+  : `<p class="text-sm text-slate-600 mb-2">Rentang predikat bisa diubah oleh supervisor — perubahan hanya berlaku untuk sesi baru.</p>
+     <ul class="text-sm space-y-1">${predikatTemplates.map((t) => `<li>· ${esc(t.title)} — <a class="text-teal-700 font-semibold underline" href="/templat/${t.id}/predikat">Ubah predikat</a></li>`).join("")}</ul>`)}`;
     } else {
       body = `
 <h1 class="text-2xl font-bold text-slate-900 mb-1">Dasbor Guru</h1>
