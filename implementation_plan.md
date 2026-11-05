@@ -1,9 +1,10 @@
 # gezyspv-pro — Implementation Plan (DRAF)
 
 Aplikasi supervisi akademik berbasis web, mengikuti pola GezyAsko:
-supervisor mengobservasi guru secara langsung saat pembelajaran
-berlangsung, lalu berdiskusi (pra dan pasca) dan menyusun rencana
-tindak lanjut. Bukan CBT, bukan penilaian murid.
+supervisor melakukan diskusi pra observasi, kemudian mengobservasi
+guru secara langsung saat pembelajaran berlangsung, dilanjutkan
+dengan diskusi pasca observasi dan menyusun rencana tindak lanjut.
+Bukan CBT, bukan penilaian murid.
 
 Nama aplikasi: **gezyspv-pro**. Repo:
 `https://github.com/pakgun10/gezyspv-pro.git` (terverifikasi kosong,
