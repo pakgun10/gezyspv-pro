@@ -27,6 +27,7 @@ export function layout(opts: {
     ? `
       <nav class="flex flex-wrap items-center gap-1 text-sm">
         <a href="/" class="px-3 py-2 rounded-lg ${active === "dasbor" ? "bg-teal-50 text-teal-800 font-semibold" : "text-slate-600 hover:bg-slate-100"}">Dasbor</a>
+        <a href="/supervisi" class="px-3 py-2 rounded-lg ${active === "supervisi" ? "bg-teal-50 text-teal-800 font-semibold" : "text-slate-600 hover:bg-slate-100"}">Supervisi</a>
         ${
           user.role === "admin"
             ? `

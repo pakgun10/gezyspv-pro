@@ -9,15 +9,97 @@ dan menyusun rencana tindak lanjut. Bukan CBT, bukan penilaian murid.
 Stack: **Bun + Elysia + MariaDB**, Tailwind CSS v4. Rencana lengkap:
 `../gezyspv-pro-plan/implementation_plan.md`.
 
-> **Status: Fase 1 (templat instrumen) selesai.** Yang sudah ada:
+> **Status: Fase 3 (profil, rekap, dan narasi) selesai.** Yang sudah ada:
 > migrasi MariaDB, auth username + kata sandi, pengaturan sekolah,
 > CRUD periode/kelas/akun, penugasan supervisor → guru, impor CSV
 > transaksional, seed templat PPB/GM, halaman login + dasbor, skrip
-> backup, **dan CRUD templat instrumen** (elemen, indikator,
+> backup, **CRUD templat instrumen** (elemen, indikator,
 > pertanyaan pra/pasca, butir RTL, prinsip, label skala, rentang
 > predikat), status draf/aktif/arsip, salin templat untuk tahun ajaran
-> baru, serta snapshot templat per sesi. Sesi supervisi, skor, rekap,
-> dan cetak dibangun pada Fase 2–4.
+> baru, serta snapshot templat per sesi, **sesi supervisi
+> lengkap** (buat sesi dari templat aktif, alur status
+> pra → observasi → pasca → tindak_lanjut → selesai, pra-observasi,
+> skor observasi per indikator, refleksi pasca oleh guru, rencana
+> tindak lanjut, foto bukti + URL video), **dan profil guru, rekap,
+> dan narasi** (tren skor SVG, distribusi per indikator, skor guru
+> per periode, rekap sekolah dan kelas, daftar guru yang belum
+> disupervisi pada periode aktif, generator + editor narasi).
+> Cetak dibangun pada Fase 4.
+
+## Profil, rekap, dan narasi (Fase 3)
+
+1. **Profil guru** (`/guru/:id`, tautan "Profil" di dasbor dan di
+   ringkasan sesi): grafik tren SVG (satu titik per sesi selesai,
+   arahkan kursor untuk melihat tema + nilai), skor guru per periode
+   (rata-rata nilai akhir **selalu bersama rincian per sesi +
+   predikat masing-masing**), distribusi per indikator (berapa kali
+   tiap label level muncul dalam satu periode), daftar semua sesi,
+   dan sesi yang masih berjalan ditampilkan terpisah sebagai "dalam
+   proses" tanpa skor. Hanya sesi berstatus `selesai` yang masuk
+   tren, distribusi, dan rata-rata.
+2. **Rekap sekolah** (`/rekap/periode/:id`, tautan "Rekap" di dasbor
+   admin): rata-rata nilai akhir per elemen di semua sesi selesai
+   pada periode itu, distribusi predikat, dan — hanya pada periode
+   aktif — daftar guru yang belum disupervisi.
+3. **Rekap satu guru** (`/rekap/guru/:id`): rata-rata nilai akhir per
+   periode beserta rincian per sesi.
+4. **Rekap kelas** (`/rekap/kelas/:id`, tautan dari rekap sekolah):
+   rata-rata nilai akhir sesi-sesi selesai di kelas itu beserta
+   rincian per guru dan per sesi (satu kelas bisa punya beberapa
+   guru/mapel).
+5. **Narasi**: disusun otomatis per sesi dari skor per elemen
+   (terkuat + yang perlu penguatan), predikat, label yang paling
+   sering muncul, serta catatan bukti, refleksi pasca, dan tindak
+   lanjut — tanpa mengarang capaian. Bila sesi belum lengkap,
+   narasi menyatakan jujur bahwa sesi belum selesai. Supervisor
+   pembuat sesi bisa mengedit narasi di halaman tindak lanjut (dan
+   sesudah sesi selesai; perubahan itu dicatat di audit log); narasi
+   hasil edit **tidak** ditimpa regenerasi otomatis — hanya tombol
+   "Buat ulang narasi" yang menimpa secara eksplisit. Guru hanya
+   bisa membaca narasi.
+6. **Hak lihat**: admin melihat semua; supervisor hanya profil/rekap
+   guru yang ditugaskan padanya (Kepala Sekolah boleh semua); guru
+   hanya profil/rekap dirinya sendiri. Rekap sekolah/kelas untuk
+   supervisor non-Kepsek dan guru hanya mencakup lingkup yang boleh
+   mereka lihat (diberi label lingkup di halaman). Akses ke guru yang
+   tidak ditugaskan → 403.
+
+## Memakai sesi supervisi (Fase 2)
+
+1. **Admin** membuat akun supervisor + guru dan mengatur penugasan
+   di menu Penugasan (Kepala Sekolah, flag Kepsek, bisa mensupervisi
+   semua guru tanpa penugasan).
+2. **Supervisor** membuka menu Supervisi → **Buat Sesi Baru**: pilih
+   templat berstatus aktif, guru yang ditugaskan, kelas, tema/mapel,
+   fase/semester, tanggal + waktu observasi. Isi templat otomatis
+   disalin menjadi snapshot sesi — perubahan templat sesudahnya tidak
+   mengubah sesi yang sudah dibuat.
+3. **Pra-observasi**: supervisor mengisi 5 pertanyaan diskusi (boleh
+   sebagian), lalu lanjut ke Observasi.
+4. **Observasi**: ketuk skor tiap indikator (tombol besar, ramah HP)
+   dan isi bukti teks bila perlu; foto bukti diunggah dari halaman ini
+   (maks 5 foto/sesi, maks 5 MB/foto, dikompresi otomatis di perangkat
+   sebelum diunggah; JPG/PNG/WebP) atau tempel URL video https.
+   Skor di luar skala templat ditolak server.
+5. **Pasca-observasi**: **guru mengisi sendiri refleksinya** pada
+   5 pertanyaan; supervisor membaca lalu menambah catatan. Guru tidak
+   bisa mengubah skor atau tindak lanjut; supervisor tidak bisa
+   mengisi kolom refleksi guru.
+6. **Tindak lanjut**: supervisor mengisi 3 butir RTL; halaman ini
+   menampilkan narasi otomatis dari skor + catatan yang bisa diedit
+   supervisor (lihat bagian Fase 3).
+7. **Selesai**: sesi hanya bisa ditandai selesai bila semua indikator
+   berskor, semua refleksi guru terisi, dan ketiga butir RTL terisi.
+   Sesi selesai terkunci — tidak bisa dihapus dan skornya tidak bisa
+   diubah (perubahan status dicatat di audit log).
+
+Status hanya berpindah satu tahap (maju atau mundur) selama belum
+selesai. Dasbor supervisor menampilkan sesi buatannya dan guru yang
+ditugaskan yang belum disupervisi pada periode aktif; dasbor guru
+menampilkan sesi atas dirinya, termasuk yang **"Menunggu refleksi
+Anda"**. Foto bukti disimpan di `DATA_DIR/bukti` (default `./data/bukti`)
+dengan nama hasil generate server dan hanya dilayani lewat `/bukti/:id`
+setelah cek login + hak — bukan folder statis publik.
 
 ## Menjalankan lokal
 

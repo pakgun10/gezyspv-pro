@@ -7,6 +7,8 @@ import { authRoutes } from "./routes/auth";
 import { dashboardRoutes } from "./routes/dashboard";
 import { adminRoutes } from "./routes/admin";
 import { templateAdminRoutes, templatePredicateRoutes } from "./routes/templates";
+import { sessionRoutes } from "./routes/sessions";
+import { profileRoutes } from "./routes/profile";
 
 /** Bangun aplikasi Elysia (tanpa efek samping; migrasi+seed ada di main()). */
 export function createApp() {
@@ -14,7 +16,7 @@ export function createApp() {
     .get("/api/kesehatan", () => ({
       ok: true,
       app: "gezyspv-pro",
-      fase: 1,
+      fase: 3,
       domain: "spv.pakgun.web.id",
     }))
     .use(authRoutes)
@@ -22,6 +24,8 @@ export function createApp() {
     .use(adminRoutes)
     .use(templateAdminRoutes)
     .use(templatePredicateRoutes)
+    .use(sessionRoutes)
+    .use(profileRoutes)
     // Prefix /static (bukan "/"): plugin statik dengan prefix "/" mendaftarkan
     // route GET / yang menimpa dasbor (NotFoundError untuk direktori public).
     .use(staticPlugin({ assets: "public", prefix: "/static" }))
