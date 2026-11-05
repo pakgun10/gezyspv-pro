@@ -1,0 +1,1 @@
+{"compilerOptions":{"lib":["ESNext","DOM"],"module":"ESNext","moduleResolution":"bundler","noUncheckedIndexedAccess":false,"skipLibCheck":true,"strict":true,"target":"ESNext","types":["bun-types"]}}

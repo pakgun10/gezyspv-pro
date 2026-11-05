@@ -1,0 +1,29 @@
+{
+  "dependencies": {
+    "@elysiajs/html": "^1.4.0",
+    "@elysiajs/static": "^1.4.0",
+    "elysia": "^1.4.0",
+    "mysql2": "^3.14.0"
+  },
+  "description": "Aplikasi supervisi akademik SMPN 1 Punggur (spv.pakgun.web.id) — Fase 0: fondasi",
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.1.0",
+    "bun-types": "1.4.4",
+    "tailwindcss": "^4.1.0",
+    "typescript": "5"
+  },
+  "name": "gezyspv-pro",
+  "private": true,
+  "scripts": {
+    "build:css": "bun x @tailwindcss/cli -i ./public/css/app.css -o ./public/dist/app.css --minify",
+    "build:css:watch": "bun x @tailwindcss/cli -i ./public/css/app.css -o ./public/dist/app.css --watch",
+    "dev": "bun --watch src/index.ts",
+    "migrate": "bun src/scripts/migrate.ts",
+    "seed": "bun src/scripts/seed.ts",
+    "setup-db": "bun src/scripts/setup-db.ts",
+    "start": "bun src/index.ts",
+    "test": "bun test"
+  },
+  "type": "module",
+  "version": "0.1.0"
+}

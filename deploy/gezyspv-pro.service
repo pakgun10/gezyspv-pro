@@ -1,0 +1,20 @@
+# gezyspv-pro — contoh unit systemd (SESUAIKAN path & user di VPS).
+# Pasang: salin ke /etc/systemd/system/gezyspv-pro.service,
+# lalu: systemctl daemon-reload && systemctl enable --now gezyspv-pro
+[Unit]
+Description=gezyspv-pro — Supervisi Akademik SMPN 1 Punggur
+After=network.target mariadb.service
+Requires=mariadb.service
+
+[Service]
+Type=simple
+User=gezyspv
+WorkingDirectory=/opt/gezyspv-pro
+# EnvironmentFile memuat DB_* dan PORT dari berkas .env aplikasi.
+EnvironmentFile=/opt/gezyspv-pro/.env
+ExecStart=/home/gezyspv/.bun/bin/bun src/index.ts
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
