@@ -412,6 +412,7 @@ describe("perlindungan route (kriteria selesai MVP §12 — tanpa login ganda ya
     "/admin/periode",
     "/admin/penugasan",
     "/admin/templat",
+    "/admin/templat/baru",
     "/admin/backup",
     "/admin/log",
     "/templat",

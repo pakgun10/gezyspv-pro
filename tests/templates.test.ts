@@ -377,6 +377,9 @@ describe("Templat: HTTP + RBAC", () => {
     const listText = await list.text();
     expect(listText).toContain("Supervisi Akademik PPB/GM 2026/2027");
     expect(listText).toContain("Buat templat baru");
+    // Daftar full-width: tombol ke halaman buat terpisah, form tidak lagi di halaman daftar.
+    expect(listText).toContain('href="/admin/templat/baru"');
+    expect(listText).not.toContain('name="title"');
     // Templat seed aktif → tombol Arsipkan tampil di daftar.
     expect(listText).toContain("Arsipkan");
     expect(listText).toContain("Salin untuk tahun ajaran baru");
@@ -397,9 +400,24 @@ describe("Templat: HTTP + RBAC", () => {
     expect(pageText).toContain("Skala 10");
   });
 
+  test("halaman buat templat baru terpisah: admin 200 + form; guru 403", async () => {
+    const adminCookie = await loginAs("admin2", "rahasia123");
+    const page = await fetch(`${base}/admin/templat/baru`, { headers: { Cookie: adminCookie } });
+    expect(page.status).toBe(200);
+    const text = await page.text();
+    expect(text).toContain("Buat templat baru");
+    expect(text).toContain("Judul templat");
+    expect(text).toContain("Buat Templat (Draf)");
+    expect(text).toContain('action="/admin/templat"');
+    expect(text).toContain("Daftar templat");
+    const guruCookie = await loginAs("guru1", "rahasia123");
+    const denied = await fetch(`${base}/admin/templat/baru`, { headers: { Cookie: guruCookie }, redirect: "manual" });
+    expect(denied.status).toBe(403);
+  });
+
   test("guru 403 di semua route templat; supervisor 403 di kelola templat", async () => {
     const guruCookie = await loginAs("guru1", "rahasia123");
-    for (const path of ["/admin/templat", `/templat/${seedId}/predikat`, "/templat"]) {
+    for (const path of ["/admin/templat", "/admin/templat/baru", `/templat/${seedId}/predikat`, "/templat"]) {
       const res = await fetch(`${base}${path}`, { headers: { Cookie: guruCookie }, redirect: "manual" });
       expect(res.status).toBe(403);
     }

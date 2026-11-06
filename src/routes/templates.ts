@@ -149,11 +149,12 @@ export const templateAdminRoutes = new Elysia().use(authPlugin).onBeforeHandle(r
       user!,
       await schoolName(),
       `
-<h1 class="text-2xl font-bold text-slate-900 mb-6">Templat Instrumen</h1>
+<div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+  <h1 class="text-2xl font-bold text-slate-900">Templat Instrumen</h1>
+  <a class="${btnPrimary}" href="/admin/templat/baru">Buat templat baru</a>
+</div>
 ${msg ? alertBox(query.ok ? "ok" : "err", msg) : ""}
 <p class="text-sm text-slate-600 mb-4">Instrumen supervisi adalah templat yang bisa diubah tiap tahun. Templat <strong>draf</strong> bisa diedit tapi belum bisa dipakai sesi baru; <strong>aktif</strong> bisa dipakai sesi baru; <strong>arsip</strong> tidak bisa diedit maupun dipakai sesi baru (menyalinnya tetap bisa). Templat yang sudah pernah dipakai sesi tidak bisa dihapus — hanya bisa diarsipkan.</p>
-<div class="grid lg:grid-cols-5 gap-4 items-start">
-<div class="lg:col-span-3">
 ${card(
   "Daftar templat",
   templates.length === 0
@@ -178,28 +179,7 @@ ${card(
         </tr>`,
         )
         .join("")}</tbody></table></div>`,
-)}
-</div>
-<div class="lg:col-span-2">
-${card(
-  "Buat templat baru",
-  `<form method="post" action="/admin/templat" class="space-y-3">
-    <div><label class="${labelCls}">Judul templat</label><input class="${inputCls}" name="title" required placeholder="mis. Supervisi Akademik PPB/GM 2027/2028"></div>
-    <div><label class="${labelCls}">Basis / pendekatan (opsional)</label><input class="${inputCls}" name="basis" placeholder="mis. Pola Pikir Bertumbuh / Growth Mindset"></div>
-    <div><label class="${labelCls}">Label tahun/versi (opsional)</label><input class="${inputCls}" name="version_label" placeholder="mis. 2027/2028"></div>
-    <div><label class="${labelCls}">Skala penilaian indikator</label>
-      <select class="${inputCls}" name="score_scale">
-        <option value="2">Skala 2 (0/1/2)</option>
-        <option value="4">Skala 4</option>
-        <option value="10">Skala 10</option>
-        <option value="100">Skala 100</option>
-      </select></div>
-    <button type="submit" class="${btnPrimary}">Buat Templat (Draf)</button>
-    <p class="text-xs text-slate-400">Templat baru selalu berstatus draf. Isi (prinsip, elemen, indikator, pertanyaan, skala, predikat) ditambahkan di halaman Kelola, lalu aktifkan bila sudah siap dipakai.</p>
-  </form>`,
-)}
-</div>
-</div>`,
+)}`,
       "templat",
     );
   })
@@ -215,8 +195,36 @@ ${card(
       });
       return redirOk(`/admin/templat/${id}`, "Templat dibuat (status draf). Silakan lengkapi isinya.");
     } catch (err) {
-      return redirErr("/admin/templat", err instanceof Error ? err.message : "Gagal membuat templat.");
+      return redirErr("/admin/templat/baru", err instanceof Error ? err.message : "Gagal membuat templat.");
     }
+  })
+
+  // ---------- Buat templat baru (halaman sendiri) ----------
+  .get("/admin/templat/baru", async ({ user, query }: any) => {
+    const msg = msgFromQuery(query as Record<string, string>);
+    return html(
+      user!,
+      await schoolName(),
+      `
+<p class="mb-4"><a class="text-teal-700 font-semibold underline text-sm" href="/admin/templat">← Daftar templat</a></p>
+<h1 class="text-2xl font-bold text-slate-900 mb-6">Buat templat baru</h1>
+${msg ? alertBox(query.ok ? "ok" : "err", msg) : ""}
+<form method="post" action="/admin/templat" class="space-y-3 max-w-2xl">
+  <div><label class="${labelCls}">Judul templat</label><input class="${inputCls}" name="title" required placeholder="mis. Supervisi Akademik PPB/GM 2027/2028"></div>
+  <div><label class="${labelCls}">Basis / pendekatan (opsional)</label><input class="${inputCls}" name="basis" placeholder="mis. Pola Pikir Bertumbuh / Growth Mindset"></div>
+  <div><label class="${labelCls}">Label tahun/versi (opsional)</label><input class="${inputCls}" name="version_label" placeholder="mis. 2027/2028"></div>
+  <div><label class="${labelCls}">Skala penilaian indikator</label>
+    <select class="${inputCls}" name="score_scale">
+      <option value="2">Skala 2 (0/1/2)</option>
+      <option value="4">Skala 4</option>
+      <option value="10">Skala 10</option>
+      <option value="100">Skala 100</option>
+    </select></div>
+  <button type="submit" class="${btnPrimary}">Buat Templat (Draf)</button>
+  <p class="text-xs text-slate-400">Templat baru selalu berstatus draf. Isi (prinsip, elemen, indikator, pertanyaan, skala, predikat) ditambahkan di halaman Kelola, lalu aktifkan bila sudah siap dipakai.</p>
+</form>`,
+      "templat",
+    );
   })
 
   // ---------- Halaman kelola (edit) ----------
