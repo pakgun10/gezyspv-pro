@@ -126,7 +126,7 @@ describe("Templat: service CRUD + validasi", () => {
     );
     await expect(
       createTemplate(pool, { title: "X", score_scale: 5 as never }),
-    ).rejects.toThrow("Skala penilaian harus 4, 10, atau 100");
+    ).rejects.toThrow("Skala penilaian harus 2, 4, 10, atau 100");
   });
 
   test("CRUD anak: elemen, indikator, prinsip, pertanyaan, RTL, label skala", async () => {

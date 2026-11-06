@@ -33,6 +33,7 @@ export const STAGE_LABEL: Record<SessionStatus, string> = {
 export type SessionRow = {
   id: number;
   template_id: number | null;
+  session_group_id: number | null;
   supervisor_id: number;
   teacher_id: number;
   class_id: number;
@@ -47,6 +48,7 @@ export type SessionRow = {
 
 export type SessionDetail = SessionRow & {
   template_title: string;
+  template_basis: string | null;
   template_scale: number;
   supervisor_name: string;
   teacher_name: string;
@@ -103,7 +105,7 @@ function stageIndex(s: SessionStatus): number {
 }
 
 export async function audit(
-  pool: mysql.Pool,
+  pool: mysql.Pool | mysql.PoolConnection,
   userId: number | null,
   action: string,
   entity: string,
@@ -147,6 +149,7 @@ export async function loadSessionDetail(pool: mysql.Pool, id: number): Promise<S
   const [rows] = await pool.query<(RowDataPacket & SessionDetail)[]>(
     `SELECT s.*,
             t.title AS template_title,
+            t.basis AS template_basis,
             (SELECT MAX(v) FROM session_scale_levels WHERE session_id = s.id) AS template_scale,
             sup.name AS supervisor_name,
             g.name AS teacher_name, g.username AS teacher_username,
@@ -175,6 +178,7 @@ export async function listSessionsForUser(pool: mysql.Pool, user: SessionUser): 
   const [rows] = await pool.query<(RowDataPacket & SessionDetail)[]>(
     `SELECT s.*,
             t.title AS template_title,
+            t.basis AS template_basis,
             (SELECT MAX(v) FROM session_scale_levels WHERE session_id = s.id) AS template_scale,
             sup.name AS supervisor_name,
             g.name AS teacher_name, g.username AS teacher_username,
@@ -306,6 +310,8 @@ export type CreateSessionInput = {
   phase_semester: string;
   observed_at: string;
   observed_time: string;
+  /** Diisi bila sesi dibuat sebagai bagian dari supervisi berkelompok. */
+  sessionGroupId?: number;
 };
 
 /**
@@ -316,7 +322,7 @@ export type CreateSessionInput = {
  * yang bukan admin (guru biasa, supervisor lain, maupun Kepsek).
  */
 export async function createSession(
-  pool: mysql.Pool,
+  pool: mysql.Pool | mysql.PoolConnection,
   supervisor: SessionUser,
   input: CreateSessionInput,
 ): Promise<number> {
@@ -353,11 +359,12 @@ export async function createSession(
 
   const [res] = await pool.query<import("mysql2/promise").ResultSetHeader>(
     `INSERT INTO sessions
-       (template_id, supervisor_id, teacher_id, class_id, period_id,
+       (template_id, session_group_id, supervisor_id, teacher_id, class_id, period_id,
         subject_theme, phase_semester, observed_at, observed_time, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pra')`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pra')`,
     [
       input.templateId,
+      input.sessionGroupId ?? null,
       supervisor.id,
       input.teacherId,
       input.classId,

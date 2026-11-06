@@ -21,7 +21,8 @@ import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 export type Db = mysql.Pool | mysql.PoolConnection;
 
 export type TemplateStatus = "draf" | "aktif" | "arsip";
-export type ScoreScale = 4 | 10 | 100;
+/** Skala penilaian: 2 (0/1/2, instrumen Kurikulum Merdeka), 4, 10, atau 100. */
+export type ScoreScale = 2 | 4 | 10 | 100;
 
 export type TemplateRow = {
   id: number;
@@ -59,7 +60,7 @@ export type TemplateDetail = {
 };
 
 const STATUSES: TemplateStatus[] = ["draf", "aktif", "arsip"];
-const SCALES: ScoreScale[] = [4, 10, 100];
+const SCALES: ScoreScale[] = [2, 4, 10, 100];
 
 /** Transisi status yang diizinkan (aksi eksplisit saja). */
 const ALLOWED_TRANSITIONS: Record<TemplateStatus, TemplateStatus[]> = {
@@ -68,9 +69,12 @@ const ALLOWED_TRANSITIONS: Record<TemplateStatus, TemplateStatus[]> = {
   arsip: ["draf"],
 };
 
-/** Rentang nilai skala yang valid: skala 100 boleh 0..100, lainnya 1..skala. */
+/**
+ * Rentang nilai skala yang valid. Skala 100 dan 2 boleh 0..skala
+ * (0 = "Tidak Ada"/"Tidak"), skala 4 dan 10 mulai dari 1.
+ */
 export function scaleRange(scale: ScoreScale): { min: number; max: number } {
-  return scale === 100 ? { min: 0, max: 100 } : { min: 1, max: scale };
+  return scale === 100 || scale === 2 ? { min: 0, max: scale } : { min: 1, max: scale };
 }
 
 export function isValidScaleValue(scale: ScoreScale, v: number): boolean {
@@ -230,7 +234,7 @@ export async function createTemplate(
   const title = input.title.trim();
   if (!title) throw new Error("Judul templat wajib diisi.");
   if (!SCALES.includes(input.score_scale)) {
-    throw new Error("Skala penilaian harus 4, 10, atau 100.");
+    throw new Error("Skala penilaian harus 2, 4, 10, atau 100.");
   }
   // Templat baru selalu berstatus draf; pengaktifan lewat aksi eksplisit.
   const [res] = await pool.query<ResultSetHeader>(
@@ -262,7 +266,7 @@ export async function updateTemplateMeta(
   const title = fields.title !== undefined ? fields.title.trim() : t.title;
   if (!title) throw new Error("Judul templat wajib diisi.");
   const scale = fields.score_scale ?? t.score_scale;
-  if (!SCALES.includes(scale)) throw new Error("Skala penilaian harus 4, 10, atau 100.");
+  if (!SCALES.includes(scale)) throw new Error("Skala penilaian harus 2, 4, 10, atau 100.");
   if (scale !== t.score_scale) {
     // Nilai skala yang sudah ada harus tetap valid pada skala baru.
     const [levels] = await pool.query<(RowDataPacket & { v: number })[]>(
@@ -378,10 +382,26 @@ export async function copyTemplate(
 }
 
 /**
- * Hapus templat. Ditolak bila: templat seed, atau sudah pernah dipakai
- * sesi mana pun. Anak ikut terhapus lewat FK cascade.
+ * Hapus templat. Ditolak bila: masih ada di dalam kelompok templat
+ * (keluarkan dulu dari kelompoknya), templat seed, atau sudah pernah
+ * dipakai sesi mana pun. Anak ikut terhapus lewat FK cascade.
+ * Cek kelompok didahulukan: templat seed yang ada di kelompok harus
+ * menyebut alasan kelompok (yang bisa diperbaiki admin), bukan seed.
  */
 export async function deleteTemplate(pool: mysql.Pool, id: number): Promise<void> {
+  const [grouped] = await pool.query<(RowDataPacket & { c: number; gtitle: string | null })[]>(
+    `SELECT COUNT(*) AS c,
+            (SELECT g.title FROM template_group_items gi
+             JOIN template_groups g ON g.id = gi.group_id
+             WHERE gi.template_id = ? LIMIT 1) AS gtitle
+     FROM template_group_items WHERE template_id = ?`,
+    [id, id],
+  );
+  if ((grouped[0]?.c ?? 0) > 0) {
+    throw new Error(
+      `Templat ini masih ada di kelompok "${grouped[0]!.gtitle ?? "templat"}" dan tidak boleh dihapus — keluarkan dulu dari kelompoknya.`,
+    );
+  }
   const t = await getTemplateRow(pool, id);
   if (t.is_seed === 1) {
     throw new Error("Templat bawaan (seed) tidak boleh dihapus. Salin dulu bila perlu versi lain.");

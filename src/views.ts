@@ -37,6 +37,7 @@ export function layout(opts: {
         <a href="/admin/periode" class="px-3 py-2 rounded-lg ${active === "periode" ? "bg-teal-50 text-teal-800 font-semibold" : "text-slate-600 hover:bg-slate-100"}">Periode</a>
         <a href="/admin/penugasan" class="px-3 py-2 rounded-lg ${active === "penugasan" ? "bg-teal-50 text-teal-800 font-semibold" : "text-slate-600 hover:bg-slate-100"}">Penugasan</a>
         <a href="/admin/templat" class="px-3 py-2 rounded-lg ${active === "templat" ? "bg-teal-50 text-teal-800 font-semibold" : "text-slate-600 hover:bg-slate-100"}">Templat</a>
+        <a href="/admin/kelompok" class="px-3 py-2 rounded-lg ${active === "kelompok" ? "bg-teal-50 text-teal-800 font-semibold" : "text-slate-600 hover:bg-slate-100"}">Kelompok</a>
         <a href="/admin/backup" class="px-3 py-2 rounded-lg ${active === "backup" ? "bg-teal-50 text-teal-800 font-semibold" : "text-slate-600 hover:bg-slate-100"}">Backup</a>
         <a href="/admin/log" class="px-3 py-2 rounded-lg ${active === "log" ? "bg-teal-50 text-teal-800 font-semibold" : "text-slate-600 hover:bg-slate-100"}">Log</a>`
             : ""

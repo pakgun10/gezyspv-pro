@@ -5,6 +5,7 @@ import { authPlugin, requireAuth } from "./auth";
 import { alertBox, card, esc, layout, statCard } from "../views";
 import { isSupervisor, supervisedTeacherIds } from "../rbac";
 import { STAGE_LABEL, listSessionsForUser } from "../lib/sessions";
+import { listSessionGroupsForUser } from "../lib/groups";
 
 export const dashboardRoutes = new Elysia().use(authPlugin).onBeforeHandle(requireAuth).get(
   "/",
@@ -30,6 +31,7 @@ export const dashboardRoutes = new Elysia().use(authPlugin).onBeforeHandle(requi
         one("SELECT COUNT(*) AS c FROM sessions"),
       ]);
       const recentSessions = await listSessionsForUser(pool, user!);
+      const sessionGroups = await listSessionGroupsForUser(pool, user!);
       const [activePeriodRows] = await pool.query<(RowDataPacket & { id: number })[]>(
         "SELECT id FROM periods WHERE is_active = 1 ORDER BY id LIMIT 1",
       );
@@ -61,6 +63,12 @@ export const dashboardRoutes = new Elysia().use(authPlugin).onBeforeHandle(requi
       : `<ul class="text-sm space-y-1">${recentSessions.slice(0, 8).map((s) => `<li>· <a class="text-teal-700 font-semibold underline" href="/supervisi/${s.id}">${esc(s.teacher_name)}</a> — ${esc(s.class_name)}, ${STAGE_LABEL[s.status]} <span class="text-slate-400">(${esc(s.supervisor_name)})</span></li>`).join("")}</ul>
          <p class="mt-3"><a class="text-teal-700 font-semibold underline text-sm" href="/supervisi">Lihat semua sesi →</a></p>`,
   )}
+  ${card(
+    "Supervisi berkelompok",
+    sessionGroups.length === 0
+      ? `<p class="text-sm text-slate-500">Belum ada supervisi berkelompok. Kelompok templat dikelola di <a class="text-teal-700 font-semibold underline" href="/admin/kelompok">menu Kelompok</a>.</p>`
+      : `<ul class="text-sm space-y-1">${sessionGroups.slice(0, 8).map((g) => `<li>· <a class="text-teal-700 font-semibold underline" href="/supervisi/kelompok/${g.id}">${esc(g.group_title)}</a> — ${esc(g.teacher_name)}, ${esc(g.class_name)} (${g.finished_count}/${g.session_count} sesi selesai)</li>`).join("")}</ul>`,
+  )}
   ${activePeriodId ? card(
     "Rekap sekolah",
     `<p class="text-sm text-slate-600 mb-2">Rata-rata per elemen, distribusi predikat, dan guru yang belum disupervisi pada periode aktif.</p>
@@ -78,6 +86,7 @@ export const dashboardRoutes = new Elysia().use(authPlugin).onBeforeHandle(requi
       const predikatTemplates = predikatRows as { id: number; title: string }[];
       const allSessions = await listSessionsForUser(pool, user!);
       const mySessions = allSessions.filter((s) => s.supervisor_id === user!.id);
+      const myGroups = (await listSessionGroupsForUser(pool, user!)).filter((g) => g.supervisor_id === user!.id);
       // Satu akun dua peran: sesi atas diri sendiri (sebagai guru yang disupervisi).
       const aboutMe = allSessions.filter((s) => s.teacher_id === user!.id);
       const waitingAboutMe = aboutMe.filter((s) => s.status === "pasca");
@@ -118,6 +127,13 @@ ${card(
       ? `<p class="text-sm text-emerald-700">Semua guru yang ditugaskan sudah pernah disupervisi pada periode aktif ini.</p>`
       : `<ul class="text-sm text-slate-700 space-y-1">${notYetSupervised.map((g) => `<li>· <a class="text-teal-700 font-semibold underline" href="/guru/${g.id}">${esc(g.name)}</a> <span class="text-slate-400">(${esc(g.username)})</span> — <a class="text-teal-700 underline" href="/rekap/guru/${g.id}">Rekap</a></li>`).join("")}</ul>`,
 )}
+${card(
+  "Supervisi berkelompok saya",
+  myGroups.length === 0
+    ? `<p class="text-sm text-slate-500">Belum ada supervisi berkelompok. <a class="text-teal-700 font-semibold underline" href="/supervisi/kelompok/baru">Buat supervisi berkelompok →</a></p>`
+    : `<ul class="text-sm space-y-1">${myGroups.slice(0, 8).map((g) => `<li>· <a class="text-teal-700 font-semibold underline" href="/supervisi/kelompok/${g.id}">${esc(g.group_title)}</a> — ${esc(g.teacher_name)}, ${esc(g.class_name)} (${g.finished_count}/${g.session_count} selesai)</li>`).join("")}</ul>
+       <p class="mt-3"><a class="text-teal-700 font-semibold underline text-sm" href="/supervisi/kelompok/baru">+ Buat supervisi berkelompok</a></p>`,
+)}
 </div>
 <div class="mt-4">
 ${card(
@@ -141,6 +157,7 @@ ${card("Predikat templat", predikatTemplates.length === 0
 </div>`;
     } else {
       const mySessions = await listSessionsForUser(pool, user!);
+      const myGroups = await listSessionGroupsForUser(pool, user!);
       const waiting = mySessions.filter((s) => s.status === "pasca");
       body = `
 <h1 class="text-2xl font-bold text-slate-900 mb-1">Dasbor Guru</h1>
@@ -152,6 +169,10 @@ ${card(
     ? `<p class="text-sm text-slate-500">Belum ada sesi supervisi atas Anda.</p>`
     : `<ul class="text-sm space-y-2">${mySessions.map((s) => `<li>· <a class="text-teal-700 font-semibold underline" href="/supervisi/${s.id}">${esc(s.supervisor_name)}</a> — ${esc(s.class_name)}, ${esc(s.subject_theme ?? "")} (${esc(s.observed_at)}) — <b>${STAGE_LABEL[s.status]}</b>${s.status === "pasca" ? ` <span class="ml-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-semibold">Menunggu refleksi Anda</span>` : ""}</li>`).join("")}</ul>`,
 )}
+${myGroups.length > 0 ? card(
+  "Supervisi berkelompok atas Anda",
+  `<ul class="text-sm space-y-1">${myGroups.map((g) => `<li>· <a class="text-teal-700 font-semibold underline" href="/supervisi/kelompok/${g.id}">${esc(g.group_title)}</a> — ${esc(g.supervisor_name)}, ${esc(g.class_name)} (${g.finished_count}/${g.session_count} sesi selesai)</li>`).join("")}</ul>`,
+) : ""}
 <p class="text-sm text-slate-500 mt-4">Guru hanya dapat melihat hasil supervisi atas dirinya sendiri.</p>
 <p class="text-sm mt-2"><a class="text-teal-700 font-semibold underline" href="/guru/${user!.id}">Profil perkembangan saya →</a> · <a class="text-teal-700 font-semibold underline" href="/rekap/guru/${user!.id}">Rekap saya per periode →</a></p>`;
     }

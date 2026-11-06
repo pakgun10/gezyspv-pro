@@ -288,7 +288,8 @@ Akademik PPB/GM 2026/2027" (3 prinsip, 4 elemen, 11 indikator,
   **tidak boleh dihapus** (tolak dengan pesan; yang bisa dilakukan
   hanya mengarsipkan). Templat seed juga tidak boleh dihapus.
   Templat yang belum pernah dipakai boleh dihapus (dengan konfirmasi).
-- **Skala penilaian:** 4, 10, atau 100. Mengubah skala ditolak bila
+- **Skala penilaian:** 2, 4, 10, atau 100. Skala 2 (0/1/2) dipakai
+  instrumen Kurikulum Merdeka. Mengubah skala ditolak bila
   ada label skala yang nilainya di luar rentang baru. Nilai akhir
   sesi selalu skala 100 + predikat.
 - **Predikat:** rentang min–max (0–100) + label, **tidak boleh
@@ -302,6 +303,143 @@ Akademik PPB/GM 2026/2027" (3 prinsip, 4 elemen, 11 indikator,
   `src/lib/snapshot.ts`). Edit templat sesudahnya tidak mengubah
   sesi lama — riwayat aman dari pergantian instrumen tahunan.
 
+## Kelompok templat & supervisi berkelompok (Kurikulum Merdeka)
+
+Keputusan Pak Gun 2026-11-06 (opsi B): empat instrumen supervisi
+Kurikulum Merdeka disajikan sebagai **satu kelompok templat**, bukan
+4 templat lepas dan bukan 1 templat raksasa. Satu supervisi
+berkelompok membuka keempat pengisian yang terhubung — masing-masing
+dengan Nilai Akhir + predikat sendiri.
+
+Isi kelompok "Instrumen Supervisi Kurikulum Merdeka" (data dari
+berkas seed paralel
+`~/workspace/your_files/templat-instrumen-supervisi/seed-templat-instrumen-I-IV.ts`;
+ejaan tanpa spasi di dokumen dinormalisasi — lihat catatan di
+`src/lib/seed-kurmer-data.ts`):
+
+| Templat | Indikator | Skala |
+| --- | --- | --- |
+| I — Administrasi Pembelajaran | 12 | 0–2 |
+| II — Penelaahan Alur Tujuan Pembelajaran | 12 | 0–2 |
+| III — Telaah Modul Ajar | 24 | 0–2 |
+| IV — Supervisi Pelaksanaan Pembelajaran | 38 | 0–2 |
+
+Label skala **generik** untuk keempat templat (disetujui Pak Gun
+2026-11-06): 0 "Tidak Ada / Tidak Sesuai", 1 "Kurang Lengkap /
+Sesuai Sebagian", 2 "Lengkap / Sesuai".
+
+Tiap templat: 0 prinsip, 0 pertanyaan pra-observasi, 1 pertanyaan
+pasca ("Apa tanggapan dan refleksi Anda atas hasil supervisi ini?"),
+2 butir tindak lanjut ("Catatan", "Tindak Lanjut"), dan 4 predikat
+dokumen: 91–100 Sangat Baik, 81–90 Baik, 71–80 Cukup, 0–70 Kurang.
+Rumus Nilai Akhir tetap rumus aplikasi (rata-rata/skala × 100) — sama
+dengan rumus dokumen (Skor/Skor Maksimal × 100%).
+
+**version_label** tiap templat diambil dari nama periode aktif di
+`/admin/periode` saat seed berjalan (saat ini "2026/2027 Ganjil") —
+bukan hardcode; dokumen tidak mencantumkan tahun ajaran. Bila tidak
+ada periode aktif, fallback "2026/2027". Mekanisme:
+`resolveKurmerVersionLabel()` di `src/lib/seed-kurmer.ts`.
+
+### Seed
+
+```bash
+bun run seed:kurmer   # migrasi dulu, lalu buat 4 templat + kelompoknya
+```
+
+Idempotent (jalan kedua tidak menduplikasi) dan tidak mengubah
+templat PPB/GM — tetapi seed **tidak memperbarui** templat yang
+sudah ada: bila isi data berubah (atau periode aktif berganti dan
+version_label harus ikut), hapus dulu templat/kelompok lama (atau
+pakai database baru) sebelum seed ulang. Data seed ada di
+`src/lib/seed-kurmer-data.ts` (salinan berkas seed paralel di atas,
+dengan dua penyesuaian yang didokumentasikan di header berkas itu);
+logika seed di `src/lib/seed-kurmer.ts`, dijalankan lewat
+`src/scripts/seed-kurmer.ts`.
+
+### Memakai
+
+- **Admin** — menu **Kelompok** (`/admin/kelompok`): buat kelompok,
+  tambah/hapus templat (hanya templat **aktif** yang bisa masuk;
+  satu templat hanya di satu kelompok), atur urutan (tombol ↑/↓).
+  Templat di dalam kelompok tetap bisa diedit seperti templat biasa
+  (sesi lama memakai snapshot). Templat di dalam kelompok **tidak
+  bisa dihapus** sebelum dikeluarkan dari kelompok. Kelompok yang
+  sudah pernah dipakai supervisi berkelompok tidak bisa dihapus.
+- **Supervisor** — **Buat Supervisi Berkelompok**
+  (`/supervisi/kelompok/baru`, ditautkan dari dasbor supervisor):
+  pilih kelompok + guru yang ditugaskan padanya (Kepsek bebas;
+  penugasan memakai `canSupervise`) + kelas + tema + fase/semester +
+  tanggal/waktu → satu `session_group` + satu sesi per templat,
+  dibuat dalam **satu transaksi** (gagal di tengah → tidak ada yang
+  tersimpan). Gagal bila ada templat di kelompok yang bukan aktif —
+  pesan galat menyebut nama templatnya. Supervisi diri sendiri
+  tetap ditolak.
+- **Alur tiap sesi** tetap pra → observasi → pasca → tindak lanjut →
+  selesai (kode yang sudah ada dipakai ulang). Templat tanpa
+  pertanyaan pra menampilkan halaman pra yang bisa langsung
+  dilewati; 0 prinsip tidak merusak halaman cetak/ringkasan
+  (bagian Prinsip dan Pra-Observasi disembunyikan bila kosong;
+  subjudul cetak memakai basis templat, mis. "Berbasis Kurikulum
+  Merdeka").
+- **Ringkasan kelompok** (`/supervisi/kelompok/:id`): status +
+  Nilai Akhir + predikat per sesi (hanya sesi selesai yang
+  menampilkan Nilai Akhir) + tautan ke tiap sesi dan halaman
+  cetaknya. Kelompok dianggap selesai bila keempat sesinya selesai.
+  Hak lihat sama dengan sesi: pembuat + yang disupervisi +
+  admin/Kepsek; supervisor lain 403. Ditautkan dari dasbor
+  (supervisor melihat kelompok buatannya; guru melihat kelompok
+  atas dirinya) dan dari ringkasan tiap sesi.
+- **Rekap tidak berubah:** rekap guru dan rekap sekolah tetap
+  menghitung per sesi. Hanya ringkasan kelompok yang menampilkan
+  keempat Nilai Akhir berdampingan.
+
+### Catatan teknis
+
+- **Skala 2** ditambahkan lewat migrasi `003_scale2_template_groups.sql`
+  (CHECK `score_scale` menjadi `IN (2, 4, 10, 100)`; migrasi 001/002
+  tidak diubah). Migrasi 003 juga menambah `template_groups`,
+  `template_group_items` (UNIQUE `template_id` — satu templat hanya
+  di satu kelompok), `session_groups`, dan kolom `sessions.session_group_id`.
+- **Catatan CHECK inline (temuan 2026-11-06):** CHECK `score_scale` di
+  001 ditulis inline pada kolom, dan `DROP CONSTRAINT IF EXISTS`
+  adalah no-op untuk CHECK seperti itu (nama di information_schema
+  hanyalah nama kolom) — CHECK lama tetap berlaku dan skala 2 tetap
+  ditolak. Karena itu 003 menghapusnya lewat `MODIFY` kolom tanpa
+  klausa CHECK, bukan lewat DROP. Hal yang sama terjadi pada CHECK
+  `role` di migrasi 002 (CHECK lama `IN ('admin','supervisor','guru')`
+  masih ada — tidak berbahaya karena superset dari yang baru — tetapi
+  jangan meniru pola DROP itu). Untuk FOREIGN KEY, MariaDB menolak
+  `ADD CONSTRAINT IF NOT EXISTS ... FOREIGN KEY`, jadi FK
+  `fk_sessions_group` ditambahkan tanpa IF NOT EXISTS; idempotensi
+  migrasi dijamin runner (nama berkas dicatat di tabel `migrations`).
+- **Penyimpangan dari dokumen:** (1) Dokumen IV tidak punya butir
+  bernomor 1–38 — yang dinilai adalah **sub-poin a–f** dari 11 butir
+  induk (A: 1–3, B: 1–6, C: 1–2); tiap sub-poin menjadi satu
+  indikator dengan nama sub-bagiannya di depan teks
+  ("Orientasi — Guru menyiapkan …"; huruf a/b/c tidak dicantumkan).
+  Total tetap 38 (7+23+8). (2) Label skala **generik** untuk keempat
+  templat (keputusan Pak Gun 2026-11-06) — dokumen memakai wording
+  berbeda per instrumen/bagian; wording III yang berbeda ("Tidak
+  Sesuai / Sesuai Sebagian / Sesuai Seluruhnya") tetap dicantumkan
+  di akhir judul elemen C, F, G, H. (3) Dokumen I tidak punya
+  pengelompokan — ke-12 butirnya dimasukkan dalam satu elemen
+  "Administrasi Pembelajaran" (kode A). (4) Ejaan tanpa spasi di
+  dokumen dinormalisasi ("pesertadidik" → "peserta didik",
+  "dataatau" → "data atau", "instrument" → "instrumen", dst.);
+  ejaan "tehnik" dipertahankan. Artefak footer "Jumlah Skor Total
+  Nilai Akhir Ketercapaian" di akhir dokumen IV tidak dimasukkan.
+  (5) Judul templat dipersingkat ("I — Administrasi Pembelajaran",
+  dst.); nama lengkap dokumen ("Instrumen Supervisi Akademik
+  (Kurikulum Merdeka)") tersimpan di deskripsi kelompok, dan `basis`
+  tetap "Kurikulum Merdeka" agar subjudul cetak tetap "Berbasis
+  Kurikulum Merdeka". (6) version_label mengikuti periode aktif
+  (lihat di atas), bukan tahun di baris tanda tangan dokumen
+  (2025). (7) Di luar yang diminta: halaman cetak menyembunyikan
+  bagian Prinsip/Pra yang kosong dan subjudul cetak memakai basis
+  templat — agar instrumen KurMer tidak tercetak dengan judul
+  "PPB/GM".
+
 ## Tes
 
 ```bash
@@ -310,7 +448,8 @@ bun test
 
 Tes memakai database terpisah (`gezyspv_test`,
 `gezyspv_test_http` untuk tes HTTP, dan `gezyspv_test_templates`
-untuk tes templat) yang dibuat otomatis oleh
+untuk tes templat, `gezyspv_test_groups` untuk tes kelompok templat)
+yang dibuat otomatis oleh
 helper tes — dengan catatan MariaDB sudah terinstal dan proses tes
 berjalan sebagai root OS (untuk `CREATE DATABASE` via unix socket),
 atau database tes sudah dibuat sebelumnya lewat `setup-db`.
@@ -340,6 +479,17 @@ Isi tes:
   validasi berkas restore, backup → restore ke salinan percobaan,
   dan sweep perlindungan 24 route tanpa login (kriteria selesai MVP
   bagian 12).
+- `tests/template-groups.test.ts` — skala 2 (dan 4/10/100 tetap
+  jalan, CHECK menolak skala 3), migrasi 003 idempotent, seed
+  KurMer (4 templat + 1 kelompok, hitungan 12/12/24/38, predikat
+  dokumen, label generik, version_label dari periode aktif +
+  fallback, teks dari berkas seed paralel), kelola kelompok admin, buat supervisi
+  berkelompok (1 grup + 4 sesi + snapshot), penugasan + larangan
+  supervisi diri + Kepsek bebas, templat non-aktif menggagalkan
+  pembuatan grup, sesi 0 pra bisa maju, selesai hanya bila lengkap
+  (Nilai Akhir 100 → Sangat Baik; 50 → Kurang), hak lihat kelompok
+  (supervisor lain 403), templat di kelompok tidak bisa dihapus,
+  dan regresi sesi tunggal PPB/GM skala 4.
 
 ## Backup & restore
 

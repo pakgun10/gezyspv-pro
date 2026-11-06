@@ -75,6 +75,7 @@ async function makeUser(
     await pool.query("DELETE FROM supervisor_assignments WHERE supervisor_id = ? OR teacher_id = ?", [uid, uid]);
     await pool.query("DELETE FROM user_sessions WHERE user_id = ?", [uid]);
     await pool.query("DELETE FROM audit_logs WHERE user_id = ?", [uid]);
+    await pool.query("DELETE FROM report_narratives WHERE edited_by = ?", [uid]);
     await pool.query("DELETE FROM users WHERE id = ?", [uid]);
   }
   const [res] = await pool.query<mysql.ResultSetHeader>(

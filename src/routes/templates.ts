@@ -189,6 +189,7 @@ ${card(
     <div><label class="${labelCls}">Label tahun/versi (opsional)</label><input class="${inputCls}" name="version_label" placeholder="mis. 2027/2028"></div>
     <div><label class="${labelCls}">Skala penilaian indikator</label>
       <select class="${inputCls}" name="score_scale">
+        <option value="2">Skala 2 (0/1/2)</option>
         <option value="4">Skala 4</option>
         <option value="10">Skala 10</option>
         <option value="100">Skala 100</option>
@@ -210,7 +211,7 @@ ${card(
         title: b.title ?? "",
         basis: b.basis ?? "",
         version_label: b.version_label ?? "",
-        score_scale: (scale === 10 || scale === 100 ? scale : 4) as ScoreScale,
+        score_scale: (scale === 2 || scale === 10 || scale === 100 ? scale : 4) as ScoreScale,
       });
       return redirOk(`/admin/templat/${id}`, "Templat dibuat (status draf). Silakan lengkapi isinya.");
     } catch (err) {
@@ -384,7 +385,7 @@ ${card(
         <div><label class="${labelCls}">Label tahun/versi</label>${input("version_label", t.version_label ?? "")}</div>
         <div><label class="${labelCls}">Skala penilaian indikator</label>
           <select class="${inputCls}" name="score_scale">
-            ${[4, 10, 100].map((s) => `<option value="${s}" ${t.score_scale === s ? "selected" : ""}>Skala ${s}</option>`).join("")}
+            ${[2, 4, 10, 100].map((s) => `<option value="${s}" ${t.score_scale === s ? "selected" : ""}>Skala ${s}</option>`).join("")}
           </select>
           <p class="text-xs text-slate-400 mt-1">Mengubah skala ditolak bila ada label skala yang nilainya di luar rentang skala baru.</p></div>
         <button type="submit" class="${btnPrimary}">Simpan Identitas</button>
@@ -450,7 +451,7 @@ ${card(
           title: b.title ?? "",
           basis: b.basis ?? "",
           version_label: b.version_label ?? "",
-          score_scale: (scale === 10 || scale === 100 ? scale : 4) as ScoreScale,
+          score_scale: (scale === 2 || scale === 10 || scale === 100 ? scale : 4) as ScoreScale,
         }),
       `/admin/templat/${id}`,
       "Identitas templat disimpan.",

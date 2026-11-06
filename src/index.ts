@@ -7,6 +7,7 @@ import { authRoutes } from "./routes/auth";
 import { dashboardRoutes } from "./routes/dashboard";
 import { adminRoutes } from "./routes/admin";
 import { templateAdminRoutes, templatePredicateRoutes } from "./routes/templates";
+import { sessionGroupRoutes, templateGroupAdminRoutes } from "./routes/groups";
 import { sessionRoutes } from "./routes/sessions";
 import { profileRoutes } from "./routes/profile";
 import { printRoutes } from "./routes/print";
@@ -25,6 +26,9 @@ export function createApp() {
     .use(adminRoutes)
     .use(templateAdminRoutes)
     .use(templatePredicateRoutes)
+    .use(templateGroupAdminRoutes)
+    // Kelompok sebelum sesi: /supervisi/kelompok/baru harus menang atas /supervisi/:id.
+    .use(sessionGroupRoutes)
     .use(sessionRoutes)
     .use(profileRoutes)
     .use(printRoutes)

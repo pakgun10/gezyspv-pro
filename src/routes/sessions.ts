@@ -318,6 +318,7 @@ export const sessionRoutes = new Elysia()
          "Identitas sesi",
          `<dl class="text-sm space-y-1">
             <div class="flex justify-between"><dt class="text-slate-500">Templat</dt><dd class="font-medium">${esc(s.template_title)}</dd></div>
+            ${s.session_group_id ? `<div class="flex justify-between"><dt class="text-slate-500">Supervisi berkelompok</dt><dd class="font-medium"><a class="text-teal-700 underline" href="/supervisi/kelompok/${s.session_group_id}">Lihat ringkasan kelompok →</a></dd></div>` : ""}
             <div class="flex justify-between"><dt class="text-slate-500">Supervisor</dt><dd class="font-medium">${esc(s.supervisor_name)}</dd></div>
             <div class="flex justify-between"><dt class="text-slate-500">Guru</dt><dd class="font-medium">${esc(s.teacher_name)} (@${esc(s.teacher_username)})</dd></div>
             <div class="flex justify-between"><dt class="text-slate-500">Profil guru</dt><dd class="font-medium"><a class="text-teal-700 underline" href="/guru/${s.teacher_id}">Lihat profil & rekap →</a></dd></div>
@@ -402,7 +403,7 @@ export const sessionRoutes = new Elysia()
       user!,
       school,
       `<h1 class="text-2xl font-bold text-slate-900 mb-1">Pra-Observasi — ${esc(s.teacher_name)}</h1>
-       <p class="text-slate-600 mb-4">Diskusikan 5 pertanyaan ini dengan guru sebelum observasi. Boleh disimpan sebagian.</p>
+       <p class="text-slate-600 mb-4">${snap.praQuestions.length === 0 ? "Templat ini tidak punya pertanyaan pra-observasi — langsung lanjut ke Observasi." : `Diskusikan ${snap.praQuestions.length} pertanyaan ini dengan guru sebelum observasi. Boleh disimpan sebagian.`}</p>
        ${msg ? alertBox(query.ok ? "ok" : "err", msg) : ""}
        ${stageStepper(s)}
        ${!editable && s.status !== "selesai" ? `<p class="mb-4 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">Tahap ini ${s.status === "pra" ? "hanya bisa diisi supervisor pembuat sesi." : "sudah berlalu — gunakan tombol “Kembali ke Pra-Observasi” di ringkasan sesi untuk melengkapi isian."}</p>` : ""}
@@ -684,7 +685,7 @@ export const sessionRoutes = new Elysia()
       user!,
       school,
       `<h1 class="text-2xl font-bold text-slate-900 mb-1">Tindak Lanjut — ${esc(s.teacher_name)}</h1>
-       <p class="text-slate-600 mb-4">Isi rencana tindak lanjut dari 3 butir di bawah, lalu periksa dan edit narasi hasil observasi.</p>
+       <p class="text-slate-600 mb-4">Isi rencana tindak lanjut dari ${snap.rtlItems.length} butir di bawah, lalu periksa dan edit narasi hasil observasi.</p>
        ${msg ? alertBox(query.ok ? "ok" : "err", msg) : ""}
        ${stageStepper(s)}
        ${!editable && s.status !== "selesai" ? `<p class="mb-4 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">Tahap ini ${s.status === "tindak_lanjut" ? "hanya bisa diisi supervisor pembuat sesi." : "sudah berlalu / belum tiba — pindah tahap dari ringkasan sesi untuk melengkapi isian."}</p>` : ""}

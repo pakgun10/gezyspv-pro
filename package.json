@@ -20,6 +20,7 @@
     "dev": "bun --watch src/index.ts",
     "migrate": "bun src/scripts/migrate.ts",
     "seed": "bun src/scripts/seed.ts",
+    "seed:kurmer": "bun src/scripts/seed-kurmer.ts",
     "setup-db": "bun src/scripts/setup-db.ts",
     "start": "bun src/index.ts",
     "test": "bun test"

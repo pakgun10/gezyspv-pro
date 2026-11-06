@@ -35,7 +35,7 @@ export function isSupervisor(user: SessionUser | null | undefined): boolean {
  *   wewenang supervisor).
  */
 export async function canSupervise(
-  pool: mysql.Pool,
+  pool: mysql.Pool | mysql.PoolConnection,
   supervisor: SessionUser,
   teacherId: number,
 ): Promise<boolean> {

@@ -144,7 +144,7 @@ export const printRoutes = new Elysia().use(authPlugin).onBeforeHandle(requireAu
     ${st.school_address ? `<div class="alamat">${esc(st.school_address)}</div>` : ""}
   </div>
   <h1>Instrumen Supervisi Akademik Pembelajaran</h1>
-  <p class="subjudul">Berbasis Pola Pikir Bertumbuh / Growth Mindset (PPB/GM)</p>
+  ${s.template_basis ? `<p class="subjudul">Berbasis ${esc(s.template_basis)}</p>` : ""}
   <p class="subjudul">${esc(s.template_title)}</p>
 
   <h2>Identitas</h2>
@@ -159,16 +159,16 @@ export const printRoutes = new Elysia().use(authPlugin).onBeforeHandle(requireAu
     <tr><td>Waktu Observasi</td><td>${esc(s.observed_time)}</td></tr>
   </table>
 
-  <h2>I. Prinsip Supervisi</h2>
-  <ol>${snap.principles.map((p) => `<li>${esc(p.text)}</li>`).join("")}</ol>
+  ${snap.principles.length > 0 ? `<h2>I. Prinsip Supervisi</h2>
+  <ol>${snap.principles.map((p) => `<li>${esc(p.text)}</li>`).join("")}</ol>` : ""}
 
-  <h2>II. Pra-Observasi (Diskusi Pra Observasi)</h2>
+  ${snap.praQuestions.length > 0 ? `<h2>II. Pra-Observasi (Diskusi Pra Observasi)</h2>
   <table>
     <thead><tr><th style="width:36px">No</th><th>Pertanyaan Panduan</th><th>Catatan Diskusi</th></tr></thead>
     <tbody>${snap.praQuestions
       .map((q, i) => `<tr><td>${i + 1}</td><td>${esc(q.text)}</td><td>${esc(q.note) || "—"}</td></tr>`)
       .join("")}</tbody>
-  </table>
+  </table>` : ""}
 
   <h2>III. Observasi</h2>
   ${snap.elements
