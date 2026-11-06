@@ -406,6 +406,8 @@ describe("perlindungan route (kriteria selesai MVP §12 — tanpa login ganda ya
     "/rekap/periode/1",
     `/rekap/guru/${guru1.id}`,
     `/rekap/kelas/${classId}`,
+    "/rekap",
+    "/kop",
     "/admin/pengaturan",
     "/admin/guru",
     "/admin/kelas",

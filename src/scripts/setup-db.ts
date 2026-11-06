@@ -42,6 +42,7 @@ await q(`GRANT ALL PRIVILEGES ON \`gezyspv_test_profile\`.* TO '${dbUser}'@'127.
 await q(`GRANT ALL PRIVILEGES ON \`gezyspv_test_narrative\`.* TO '${dbUser}'@'127.0.0.1'`);
 await q(`GRANT ALL PRIVILEGES ON \`gezyspv_test_print\`.* TO '${dbUser}'@'127.0.0.1'`);
 await q(`GRANT ALL PRIVILEGES ON \`gezyspv_test_groups\`.* TO '${dbUser}'@'127.0.0.1'`);
+await q(`GRANT ALL PRIVILEGES ON \`gezyspv_test_kop\`.* TO '${dbUser}'@'127.0.0.1'`);
 await q("FLUSH PRIVILEGES");
 await root.end();
 

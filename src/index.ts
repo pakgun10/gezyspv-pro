@@ -11,6 +11,7 @@ import { sessionGroupRoutes, templateGroupAdminRoutes } from "./routes/groups";
 import { sessionRoutes } from "./routes/sessions";
 import { profileRoutes } from "./routes/profile";
 import { printRoutes } from "./routes/print";
+import { kopRoutes } from "./routes/kop";
 
 /** Bangun aplikasi Elysia (tanpa efek samping; migrasi+seed ada di main()). */
 export function createApp() {
@@ -32,6 +33,7 @@ export function createApp() {
     .use(sessionRoutes)
     .use(profileRoutes)
     .use(printRoutes)
+    .use(kopRoutes)
     // Prefix /static (bukan "/"): plugin statik dengan prefix "/" mendaftarkan
     // route GET / yang menimpa dasbor (NotFoundError untuk direktori public).
     .use(staticPlugin({ assets: "public", prefix: "/static" }))

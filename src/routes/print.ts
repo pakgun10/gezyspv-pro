@@ -10,6 +10,7 @@ import {
 import { canViewSession, loadSessionDetail, loadSnapshot } from "../lib/sessions";
 import { elementScores, finalScore100, predicateFor } from "../lib/scores";
 import { listEvidence } from "../lib/evidence";
+import { kopBlock, toKopSettings } from "../lib/kop";
 
 /**
  * Halaman cetak — Fase 4 (plan bagian 8).
@@ -49,6 +50,8 @@ const PRINT_CSS = `
   .kop { text-align: center; border-bottom: 3px double #111; padding-bottom: 10px; margin-bottom: 14px; }
   .kop .nama { font-size: 22px; font-weight: bold; text-transform: uppercase; }
   .kop .alamat { font-size: 12px; color: #333; }
+  .kop-gambar { margin-bottom: 14px; }
+  .kop-gambar img { width: 100%; height: auto; display: block; }
   .subjudul { text-align: center; font-size: 13px; margin: 2px 0; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 6px 0; }
   th, td { border: 1px solid #555; padding: 6px 8px; text-align: left; vertical-align: top; overflow-wrap: break-word; }
@@ -88,6 +91,7 @@ export const printRoutes = new Elysia().use(authPlugin).onBeforeHandle(requireAu
         school_address: string | null;
         principal_name: string | null;
         signature_place: string;
+        kop_path: string | null;
       })[]
     >("SELECT * FROM settings WHERE id = 1");
     const st = settingsRows[0] ?? {
@@ -95,7 +99,11 @@ export const printRoutes = new Elysia().use(authPlugin).onBeforeHandle(requireAu
       school_address: null,
       principal_name: null,
       signature_place: "Seputih Agung",
+      kop_path: null,
     };
+    // Kop laporan: gambar bila ada, bila tidak kop teks (nama + alamat).
+    // Baris settings sudah dibaca di atas (SELECT *), jadi tidak perlu query lagi.
+    const kopSettings = toKopSettings(st);
     const [nipRows] = await pool.query<(RowDataPacket & { id: number; nip: string | null })[]>(
       "SELECT id, nip FROM users WHERE id IN (?, ?)",
       [s.supervisor_id, s.teacher_id],
@@ -139,10 +147,7 @@ export const printRoutes = new Elysia().use(authPlugin).onBeforeHandle(requireAu
 </div>
 <div class="sheet">
   ${msg ? `<p class="no-print" style="padding:10px 14px;border-radius:8px;${msgCls}">${esc(msg)}</p>` : ""}
-  <div class="kop">
-    <div class="nama">${esc(st.school_name)}</div>
-    ${st.school_address ? `<div class="alamat">${esc(st.school_address)}</div>` : ""}
-  </div>
+  ${kopBlock(kopSettings)}
   <h1>Instrumen Supervisi Akademik Pembelajaran</h1>
   ${s.template_basis ? `<p class="subjudul">Berbasis ${esc(s.template_basis)}</p>` : ""}
   <p class="subjudul">${esc(s.template_title)}</p>

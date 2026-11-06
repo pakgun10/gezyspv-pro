@@ -4,6 +4,7 @@ import { hashPassword } from "../auth";
 import { authPlugin, requireAdmin } from "./auth";
 import { importGuruCsv, importKelasCsv } from "../lib/csv";
 import { isValidBackupName, restoreBackup } from "../lib/backup";
+import { deleteKop, storeKop } from "../lib/kop";
 import type { RowDataPacket } from "mysql2/promise";
 import {
   alertBox,
@@ -46,6 +47,7 @@ export const adminRoutes = new Elysia().use(authPlugin).onBeforeHandle(requireAd
         school_address: string | null;
         principal_name: string | null;
         signature_place: string;
+        kop_path: string | null;
       })[]
     >("SELECT * FROM settings WHERE id = 1");
     const s = rows[0]!;
@@ -70,6 +72,17 @@ ${card(
     <button type="submit" class="${btnPrimary}">Simpan Pengaturan</button>
   </form>`,
 )}
+<div class="h-4"></div>
+${card(
+  "Kop laporan",
+  `${s.kop_path ? `<p class="text-sm text-slate-600 mb-2">Gambar kop saat ini:</p><img src="/kop" alt="Kop laporan" class="max-w-full sm:max-w-md border border-slate-200 rounded-xl mb-3">` : `<p class="text-sm text-slate-500 mb-3">Belum ada gambar kop — laporan memakai kop teks (nama + alamat sekolah).</p>`}
+  <form method="post" action="/admin/pengaturan/kop" enctype="multipart/form-data" class="space-y-3">
+    <div><label class="${labelCls}">Gambar kop (PNG/JPEG, maks 2 MB)</label><input class="${inputCls}" type="file" name="file" accept="image/png,image/jpeg" required></div>
+    <button type="submit" class="${btnPrimary}">Unggah Kop</button>
+    <p class="text-xs text-slate-400">Gambar kop tampil full-width di atas halaman Cetak dan cetakan rekap. Mengunggah kop baru menggantikan yang lama.</p>
+  </form>
+  ${s.kop_path ? `<form method="post" action="/admin/pengaturan/kop/hapus" onsubmit="return confirm('Hapus gambar kop? Laporan kembali memakai kop teks.')" class="mt-3"><button class="${btnDanger}">Hapus Kop</button></form>` : ""}`,
+)}
 `,
       "pengaturan",
     );
@@ -93,6 +106,36 @@ ${card(
     return new Response(null, {
       status: 302,
       headers: { Location: "/admin/pengaturan?ok=" + encodeURIComponent("Pengaturan disimpan.") },
+    });
+  })
+
+  // ---------- Gambar kop laporan (model GezyRaport) ----------
+  .post("/admin/pengaturan/kop", async ({ body }: any) => {
+    const fail = (m: string) =>
+      new Response(null, { status: 302, headers: { Location: "/admin/pengaturan?err=" + encodeURIComponent(m) } });
+    const b = body as Record<string, unknown>;
+    const file = b.file as File | undefined;
+    if (!file || typeof file.arrayBuffer !== "function" || file.size <= 0) {
+      return fail("Pilih berkas gambar kop dulu (PNG/JPEG, maks 2 MB).");
+    }
+    try {
+      await storeKop(getPool(), Buffer.from(await file.arrayBuffer()), file.type || "");
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : "Gagal mengunggah gambar kop.");
+    }
+    return new Response(null, {
+      status: 302,
+      headers: { Location: "/admin/pengaturan?ok=" + encodeURIComponent("Gambar kop diunggah.") },
+    });
+  })
+  .post("/admin/pengaturan/kop/hapus", async () => {
+    await deleteKop(getPool());
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location:
+          "/admin/pengaturan?ok=" + encodeURIComponent("Gambar kop dihapus. Laporan kembali memakai kop teks."),
+      },
     });
   })
 

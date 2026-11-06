@@ -1,9 +1,10 @@
 import { Elysia } from "elysia";
 import type { RowDataPacket } from "mysql2/promise";
 import { getPool } from "../db";
-import { authPlugin, requireAuth } from "./auth";
+import { authPlugin, redirectTo, requireAuth } from "./auth";
 import { isSupervisor } from "../rbac";
 import { alertBox, btnGhost, card, esc, layout, statCard } from "../views";
+import { getKopSettings, kopBlock, REKAP_PRINT_CSS } from "../lib/kop";
 import {
   activePeriod,
   canViewClassRecap,
@@ -148,6 +149,24 @@ export const profileRoutes = new Elysia()
     );
   })
 
+  // ---------- Rekap (pintu masuk menu) ----------
+  .get("/rekap", async ({ user }: any) => {
+    const pool = getPool();
+    const active = await activePeriod(pool);
+    if (!active) {
+      return html(
+        user!,
+        await schoolName(),
+        `<h1 class="text-2xl font-bold text-slate-900 mb-4">Rekap</h1>
+         ${alertBox("info", "Belum ada periode aktif. Buat dan aktifkan periode dulu, lalu buka lagi menu Rekap.")}
+         <p><a href="/" class="${btnGhost}">← Dasbor</a></p>`,
+        "rekap",
+        "Rekap",
+      );
+    }
+    return redirectTo(`/rekap/periode/${active.id}`);
+  })
+
   // ---------- Rekap satu guru per periode ----------
   .get("/rekap/guru/:id", async ({ user, params }: any) => {
     const teacherId = Number(params.id);
@@ -155,7 +174,8 @@ export const profileRoutes = new Elysia()
     if (!(await canViewTeacher(pool, user!, teacherId))) {
       return new Response("Anda tidak berhak melihat rekap guru ini.", { status: 403 });
     }
-    const school = await schoolName();
+    const kopSt = await getKopSettings(pool);
+    const school = kopSt.school_name;
     const teacher = await loadTeacher(pool, teacherId);
     if (!teacher) return new Response("Guru tidak ditemukan.", { status: 404 });
     const periods = await listPeriods(pool);
@@ -167,7 +187,12 @@ export const profileRoutes = new Elysia()
     return html(
       user!,
       school,
-      `<h1 class="text-2xl font-bold text-slate-900 mb-1">Rekap ${esc(teacher.name)}</h1>
+      `${REKAP_PRINT_CSS}
+       <div class="kop-cetak">${kopBlock(kopSt)}</div>
+       <div class="flex flex-wrap items-start justify-between gap-3 mb-1">
+         <h1 class="text-2xl font-bold text-slate-900">Rekap ${esc(teacher.name)}</h1>
+         <button type="button" onclick="window.print()" class="${btnGhost} no-print">🖨 Cetak / Simpan PDF</button>
+       </div>
        <p class="text-slate-600 mb-4">@${esc(teacher.username)} · rata-rata per periode (sesi selesai saja), selalu bersama rincian per sesi.</p>
        ${perPeriod.length === 0 ? `<p class="text-sm text-slate-500">Belum ada sesi selesai.</p>` : ""}
        <div class="space-y-4">
@@ -180,8 +205,8 @@ export const profileRoutes = new Elysia()
          )
          .join("")}
        </div>
-       <p class="mt-4"><a href="/guru/${teacher.id}" class="${btnGhost}">← Profil ${esc(teacher.name)}</a></p>`,
-      "supervisi",
+       <p class="mt-4 no-print"><a href="/guru/${teacher.id}" class="${btnGhost}">← Profil ${esc(teacher.name)}</a></p>`,
+      "rekap",
       `Rekap ${teacher.name}`,
     );
   })
@@ -191,7 +216,8 @@ export const profileRoutes = new Elysia()
     const periodId = Number(params.id);
     const pool = getPool();
     const scope = await viewScopeTeacherIds(pool, user!);
-    const school = await schoolName();
+    const kopSt = await getKopSettings(pool);
+    const school = kopSt.school_name;
     let recap;
     try {
       recap = await periodRecap(pool, periodId, scope);
@@ -208,7 +234,12 @@ export const profileRoutes = new Elysia()
     return html(
       user!,
       school,
-      `<h1 class="text-2xl font-bold text-slate-900 mb-1">Rekap Sekolah — ${esc(recap.period.name)}</h1>
+      `${REKAP_PRINT_CSS}
+       <div class="kop-cetak">${kopBlock(kopSt)}</div>
+       <div class="flex flex-wrap items-start justify-between gap-3 mb-1">
+         <h1 class="text-2xl font-bold text-slate-900">Rekap Sekolah — ${esc(recap.period.name)}</h1>
+         <button type="button" onclick="window.print()" class="${btnGhost} no-print">🖨 Cetak / Simpan PDF</button>
+       </div>
        <p class="text-slate-600 mb-2">${recap.completedCount} sesi selesai pada periode ini.</p>
        ${scopeNote}
        <div class="grid md:grid-cols-2 gap-4 mb-4">
@@ -255,8 +286,8 @@ export const profileRoutes = new Elysia()
                    .join("")}</ul>`,
            )}</div>`
          : ""}
-       ${classIds.length > 0 ? `<p class="text-sm text-slate-500 mt-4">Rekap per kelas: ${classIds.map((cid) => { const s = recap.sessions.find((x) => x.class_id === cid)!; return `<a class="text-teal-700 underline" href="/rekap/kelas/${cid}">${esc(s.class_name)}</a>`; }).join(" · ")}</p>` : ""}`,
-      "supervisi",
+       ${classIds.length > 0 ? `<p class="text-sm text-slate-500 mt-4 no-print">Rekap per kelas: ${classIds.map((cid) => { const s = recap.sessions.find((x) => x.class_id === cid)!; return `<a class="text-teal-700 underline" href="/rekap/kelas/${cid}">${esc(s.class_name)}</a>`; }).join(" · ")}</p>` : ""}`,
+      "rekap",
       `Rekap ${recap.period.name}`,
     );
   })
@@ -268,7 +299,8 @@ export const profileRoutes = new Elysia()
     if (!(await canViewClassRecap(pool, user!, classId))) {
       return new Response("Anda tidak berhak melihat rekap kelas ini.", { status: 403 });
     }
-    const school = await schoolName();
+    const kopSt = await getKopSettings(pool);
+    const school = kopSt.school_name;
     const scope = await viewScopeTeacherIds(pool, user!);
     let recap;
     try {
@@ -279,7 +311,12 @@ export const profileRoutes = new Elysia()
     return html(
       user!,
       school,
-      `<h1 class="text-2xl font-bold text-slate-900 mb-1">Rekap Kelas ${esc(recap.className)}</h1>
+      `${REKAP_PRINT_CSS}
+       <div class="kop-cetak">${kopBlock(kopSt)}</div>
+       <div class="flex flex-wrap items-start justify-between gap-3 mb-1">
+         <h1 class="text-2xl font-bold text-slate-900">Rekap Kelas ${esc(recap.className)}</h1>
+         <button type="button" onclick="window.print()" class="${btnGhost} no-print">🖨 Cetak / Simpan PDF</button>
+       </div>
        <p class="text-slate-600 mb-4">Periode ${esc(recap.period.name)} · ${recap.completedCount} sesi selesai.</p>
        ${recap.averageFinal === null
          ? `<p class="text-sm text-slate-500">Belum ada sesi selesai di kelas ini.</p>`
@@ -294,8 +331,8 @@ export const profileRoutes = new Elysia()
          )
          .join("")}
        </div>
-       <p class="mt-4"><a href="/rekap/periode/${recap.period.id}" class="${btnGhost}">← Rekap Sekolah ${esc(recap.period.name)}</a></p>`,
-      "supervisi",
+       <p class="mt-4 no-print"><a href="/rekap/periode/${recap.period.id}" class="${btnGhost}">← Rekap Sekolah ${esc(recap.period.name)}</a></p>`,
+      "rekap",
       `Rekap Kelas ${recap.className}`,
     );
   });
